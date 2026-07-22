@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl" data-theme="dark">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -91,8 +91,10 @@ ul{list-style:none;}
 
   /* Mobile & App Compatibility Variables */
   --app-height:100vh;
-  --safe-area-top:0px;
-  --safe-area-bottom:0px;
+  --safe-area-inset-top:env(safe-area-inset-top,0px);
+  --safe-area-inset-bottom:env(safe-area-inset-bottom,0px);
+  --safe-area-top:var(--safe-area-inset-top);
+  --safe-area-bottom:var(--safe-area-inset-bottom);
   --viewport-width:100vw;
   --viewport-height:100vh;
   --touch-target:44px;
@@ -772,7 +774,10 @@ select.sort-select{
 }
 .card-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:8px;flex:1;}
 .card-sku{font-size:11px;color:var(--text-dim);letter-spacing:.04em;font-family:var(--font-display);}
-.card-name{font-family:'Cairo',var(--font-head);font-weight:700;font-size:15.5px;color:var(--text);}
+.card-name{
+  font-family:'Cairo',var(--font-head);font-weight:700;font-size:15.5px;color:var(--text);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
 .card-desc{font-size:12.5px;color:var(--text-muted);min-height:34px;}
 .card-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;}
 .card-price-row{display:flex;align-items:baseline;gap:8px;margin-top:6px;}
@@ -991,6 +996,7 @@ footer{margin-top:80px;border-top:1px solid var(--line);background:var(--bg-soft
    ============================================================ */
 .wa-fab{
   position:fixed;bottom:24px;left:24px;z-index:90;
+  bottom:calc(24px + env(safe-area-inset-bottom));
   background:var(--olive);color:#fff;width:56px;height:56px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-gold);
 }
@@ -1001,10 +1007,18 @@ footer{margin-top:80px;border-top:1px solid var(--line);background:var(--bg-soft
    ============================================================ */
 .maps-fab{
   position:fixed;bottom:24px;left:90px;z-index:90;
+  bottom:calc(24px + env(safe-area-inset-bottom));
   background:var(--bronze);color:#fff;width:56px;height:56px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-gold);
 }
 .maps-fab .icon{width:24px;height:24px;}
+
+@media (max-width:640px){
+  .wa-fab,.maps-fab{width:48px;height:48px;}
+  .wa-fab .icon,.maps-fab .icon{width:20px;height:20px;}
+  .wa-fab{bottom:calc(16px + env(safe-area-inset-bottom));left:16px;}
+  .maps-fab{bottom:calc(16px + env(safe-area-inset-bottom));left:72px;}
+}
 
 /* ============================================================
    17. VIEW SWITCHING
@@ -3900,6 +3914,9 @@ img.lazy.loaded{opacity:1;}
 footer{
   border-top:1px solid var(--line);
   background:linear-gradient(180deg, transparent, color-mix(in srgb, var(--obsidian) 60%, var(--obsidian-soft)));
+}
+@media (max-width:640px){
+  footer{padding-bottom:calc(90px + env(safe-area-inset-bottom));}
 }
 
 /* ---- Sticky catalog toolbar ---- */
@@ -17535,6 +17552,10 @@ function updateFlashSaleCountdown(){
     document.getElementById('countdownHours').textContent = '00';
     document.getElementById('countdownMinutes').textContent = '00';
     document.getElementById('countdownSeconds').textContent = '00';
+    // العرض انتهى فعلياً — نخفي القسم بالكامل بدل ترك 00:00:00 معلّقة (تعطي انطباعاً بوجود خطأ)
+    const expiredSection = document.getElementById('flashSaleSection');
+    if(expiredSection) expiredSection.style.display = 'none';
+    if(flashSaleInterval) clearInterval(flashSaleInterval);
     return;
   }
   
@@ -19037,6 +19058,43 @@ setTimeout(() => {
   window.addEventListener('load', () => {
     setTimeout(showNotificationOptInBanner, 4000);
   });
+})();
+
+/* ============================================================
+   منع تمرير الصفحة الخلفية عند فتح أي نافذة منبثقة أو سلة أو فلتر
+   (يغطي كل عناصر modal-backdrop / drawer-backdrop / drawer دفعة واحدة)
+   ============================================================ */
+(function(){
+  const OVERLAY_SELECTOR = '.modal-backdrop.open, .drawer-backdrop.open, .drawer.open, .filter-drawer.open';
+  let scrollY = 0;
+  function lockBodyScroll(){
+    if(document.body.classList.contains('scroll-locked')) return;
+    scrollY = window.scrollY || window.pageYOffset || 0;
+    document.body.classList.add('scroll-locked');
+    document.body.style.position = 'fixed';
+    document.body.style.top = '-' + scrollY + 'px';
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+  }
+  function unlockBodyScroll(){
+    if(!document.body.classList.contains('scroll-locked')) return;
+    document.body.classList.remove('scroll-locked');
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    document.body.style.right = '';
+    document.body.style.width = '';
+    window.scrollTo(0, scrollY);
+  }
+  function syncScrollLock(){
+    const anyOpen = !!document.querySelector(OVERLAY_SELECTOR);
+    if(anyOpen) lockBodyScroll(); else unlockBodyScroll();
+  }
+  const observer = new MutationObserver(syncScrollLock);
+  observer.observe(document.body, {attributes:true, attributeFilter:['class'], subtree:true});
+  document.addEventListener('DOMContentLoaded', syncScrollLock);
+  syncScrollLock();
 })();
 
 </script>
