@@ -4724,33 +4724,6 @@ html[dir="ltr"] .partners-track{animation-name:partnersScrollLtr;}
   pointer-events:none;
 }
 
-/* ---- Mobile CTA Bar ---- */
-.mobile-cta-bar{
-  position:fixed;bottom:0;right:0;left:0;
-  background:var(--bg-card);border-top:1px solid var(--line);
-  padding:12px 16px;display:flex;gap:12px;
-  z-index:1000;transform:translateY(100%);transition:transform .3s ease;
-}
-.mobile-cta-bar.visible{transform:translateY(0);}
-.mobile-cta-btn{
-  flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
-  padding:14px;border-radius:var(--radius);font-family:'Cairo',var(--font-head);
-  font-weight:700;font-size:14px;text-decoration:none;
-}
-.mobile-cta-call{
-  background:var(--olive);color:#fff;
-}
-.mobile-cta-cart{
-  background:var(--bronze);color:#fff;position:relative;
-}
-.mobile-cart-count{
-  position:absolute;top:-6px;right:-6px;
-  background:var(--danger);color:#fff;
-  width:22px;height:22px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;
-}
-
 /* ---- Order Tracking Stages ---- */
 .tracking-stages{
   display:flex;flex-direction:column;gap:16px;margin-top:20px;
@@ -5327,10 +5300,6 @@ body.app-mode-active .about,
 body.app-mode-active footer {
   display: none !important;
 }
-/* منع ازدواجية الأشرطة السفلية: شريط السلة/الاتصال العائم يُستبدل بشريط التنقل السفلي في وضع التطبيق */
-body.app-mode-active .mobile-cta-bar {
-  display: none !important;
-}
 /* إظهار شريط التنقل السفلي */
 .app-bottom-nav {
   display: none;
@@ -5378,6 +5347,38 @@ body.app-mode-active .app-bottom-nav {
 @media (max-width:600px){
   .app-mode-fab{width:48px;height:48px;right:12px;}
   .app-mode-fab .icon-phone{width:22px;height:22px;}
+}
+
+/* ---- إجبار أزرار الهيدر على الالتفاف لصف جديد فور تفعيل وضع التطبيق،
+   بدل الاعتماد فقط على عرض الشاشة الفعلي (مهم عند تجربة الوضع على شاشة كمبيوتر) ---- */
+body.app-mode-active .header-row{
+  flex-wrap: wrap !important;
+  row-gap: 10px !important;
+}
+body.app-mode-active .search-wrap{
+  order: 3;
+  flex-basis: 100%;
+  max-width: none;
+}
+body.app-mode-active .header-actions{
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  row-gap: 8px !important;
+  width: 100% !important;
+  order: 4;
+}
+body.app-mode-active .icon-btn{
+  width: 36px !important;
+  height: 36px !important;
+}
+body.app-mode-active .icon-btn .icon{
+  width: 16px !important;
+  height: 16px !important;
+}
+body.app-mode-active .logo-placeholder{
+  width: 44px !important;
+  height: 44px !important;
 }
 
 </style>
@@ -8353,28 +8354,35 @@ function findCityCoords(cityField){
    ============================================================ */
 let SUGGESTIONS = [];
 
-// Load suggestions from localStorage
-function loadSuggestions() {
+// تحميل الاقتراحات من Firestore (مع نسخة احتياطية محلية)
+async function loadSuggestions() {
+  try{
+    if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
+      const data = await FirebaseCloudStorage.loadSiteData('app_data_suggestions');
+      if(data && Array.isArray(data.suggestions)){ SUGGESTIONS = data.suggestions; return; }
+    }
+  }catch(e){ console.error('تعذّر تحميل الاقتراحات من Firestore:', e); }
   const stored = localStorage.getItem('hl_suggestions');
   if (stored) {
-    try {
-      SUGGESTIONS = JSON.parse(stored);
-    } catch (e) {
-      console.error('Error loading suggestions:', e);
-      SUGGESTIONS = [];
-    }
+    try { SUGGESTIONS = JSON.parse(stored); }
+    catch (e) { console.error('Error loading suggestions:', e); SUGGESTIONS = []; }
   }
 }
 
-// Save suggestions to localStorage
-function saveSuggestions() {
+// حفظ الاقتراحات على Firestore (ونسخة احتياطية محلية)
+async function saveSuggestions() {
   localStorage.setItem('hl_suggestions', JSON.stringify(SUGGESTIONS));
+  try{
+    if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
+      await FirebaseCloudStorage.saveSiteData({suggestions: SUGGESTIONS}, 'app_data_suggestions');
+    }
+  }catch(e){ console.error('تعذّر حفظ الاقتراحات على Firestore:', e); }
 }
 
-// Add a new suggestion
-function addSuggestion(data) {
+// إضافة اقتراح جديد
+async function addSuggestion(data) {
   const suggestion = {
-    id: 'sug_' + Date.now(),
+    id: 'sug_' + Date.now() + Math.random().toString(16).slice(2,6),
     name: data.name || '',
     email: data.email || '',
     message: data.message,
@@ -8382,22 +8390,22 @@ function addSuggestion(data) {
     status: 'new' // new, read, archived
   };
   SUGGESTIONS.unshift(suggestion);
-  saveSuggestions();
+  await saveSuggestions();
   return suggestion;
 }
 
-// Delete a suggestion
-function deleteSuggestion(id) {
+// حذف اقتراح من المخزن (اسم مختلف عمداً لتفادي تعارضه مع window.deleteSuggestion)
+async function removeSuggestionRecord(id) {
   SUGGESTIONS = SUGGESTIONS.filter(s => s.id !== id);
-  saveSuggestions();
+  await saveSuggestions();
 }
 
-// Update suggestion status
-function updateSuggestionStatus(id, status) {
+// تحديث حالة الاقتراح
+async function updateSuggestionStatus(id, status) {
   const suggestion = SUGGESTIONS.find(s => s.id === id);
   if (suggestion) {
     suggestion.status = status;
-    saveSuggestions();
+    await saveSuggestions();
   }
 }
 
@@ -8579,12 +8587,27 @@ async function saveProducts(){
   if(typeof renderProducts === 'function') renderProducts();
   if(typeof applyFilters === 'function') applyFilters();
 }
+let ORDERS_CACHE = [];
 async function getOrders(){
-  try{ const r = await storage.get('hl_orders_v1', true); const v = JSON.parse(r.value); return Array.isArray(v)?v:[]; }
+  try{
+    if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
+      const data = await FirebaseCloudStorage.loadSiteData('app_data_orders');
+      if(data && Array.isArray(data.orders)){ ORDERS_CACHE = data.orders; return ORDERS_CACHE; }
+      return ORDERS_CACHE;
+    }
+  }catch(e){ console.error('تعذّر تحميل الطلبات من Firestore:', e); }
+  // احتياطي محلي إذا Firebase غير متاح
+  try{ const v = JSON.parse(localStorage.getItem('hl_orders_v1')||'[]'); return Array.isArray(v)?v:[]; }
   catch(e){ return []; }
 }
 async function saveOrders(list){
-  try{ await storage.set('hl_orders_v1', JSON.stringify(list), true); }catch(e){}
+  ORDERS_CACHE = list;
+  try{ localStorage.setItem('hl_orders_v1', JSON.stringify(list)); }catch(e){}
+  try{
+    if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
+      await FirebaseCloudStorage.saveSiteData({orders:list}, 'app_data_orders');
+    }
+  }catch(e){ console.error('تعذّر حفظ الطلبات على Firestore:', e); }
 }
 async function getActivity(){
   try{ const r = await storage.get('hl_activity_v1', true); const v = JSON.parse(r.value); return Array.isArray(v)?v:[]; }
@@ -9827,11 +9850,9 @@ function openProduct(id){
   state.modalImgIdx = 0;
   renderModal();
   document.getElementById('modalBackdrop').classList.add('open');
-  if(typeof window.setMobileCtaProductOpen === 'function') window.setMobileCtaProductOpen(true);
 }
 function closeProduct(){
   document.getElementById('modalBackdrop').classList.remove('open');
-  if(typeof window.setMobileCtaProductOpen === 'function') window.setMobileCtaProductOpen(false);
 }
 
 function computePricing(p, sel){
@@ -11517,6 +11538,39 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
 
+    // Handle admin suggestion actions (تعليم كمقروء / أرشفة / حذف / مسح المقروء)
+    const markReadSuggestionBtn = e.target.closest('[data-admin-mark-read-suggestion]');
+    if(markReadSuggestionBtn && !markReadSuggestionBtn.disabled) {
+      const sid = markReadSuggestionBtn.dataset.adminMarkReadSuggestion;
+      if(sid && typeof window.markSuggestionAsRead === 'function') window.markSuggestionAsRead(sid);
+    }
+    const archiveSuggestionBtn = e.target.closest('[data-admin-archive-suggestion]');
+    if(archiveSuggestionBtn) {
+      const sid = archiveSuggestionBtn.dataset.adminArchiveSuggestion;
+      if(sid && typeof window.archiveSuggestion === 'function') window.archiveSuggestion(sid);
+    }
+    const deleteSuggestionBtn = e.target.closest('[data-admin-delete-suggestion]');
+    if(deleteSuggestionBtn) {
+      const sid = deleteSuggestionBtn.dataset.adminDeleteSuggestion;
+      if(sid && typeof window.deleteSuggestion === 'function') window.deleteSuggestion(sid);
+    }
+    const clearSuggestionsBtn = e.target.closest('[data-admin-clear-suggestions]');
+    if(clearSuggestionsBtn) {
+      if(typeof window.clearReadSuggestions === 'function') window.clearReadSuggestions();
+    }
+
+    // Handle admin document actions (تنزيل / حذف مستند مرفق)
+    const downloadDocumentBtn = e.target.closest('[data-admin-download-document]');
+    if(downloadDocumentBtn) {
+      const did = downloadDocumentBtn.dataset.adminDownloadDocument;
+      if(did && typeof window.downloadDocument === 'function') window.downloadDocument(did);
+    }
+    const deleteDocumentBtn = e.target.closest('[data-admin-delete-document]');
+    if(deleteDocumentBtn) {
+      const did = deleteDocumentBtn.dataset.adminDeleteDocument;
+      if(did && typeof window.deleteDocument === 'function') window.deleteDocument(did);
+    }
+
     // Handle clear search all button
     const clearSearchBtn = e.target.closest('[data-clear-search-all]');
     if(clearSearchBtn) {
@@ -12459,32 +12513,38 @@ const DocumentsModule = (function() {
 
   // Private constants
   const STORAGE_KEY = 'uploaded_documents';
-  
-  // Private methods
-  function getDocuments() {
-    try {
-      const docs = localStorage.getItem(STORAGE_KEY);
-      return docs ? JSON.parse(docs) : [];
-    } catch (e) {
-      console.error('Error loading documents:', e);
-      return [];
-    }
+  let documentsCache = [];
+
+  // تحميل نسخة احتياطية محلية عند بدء التشغيل (تُستبدل فوراً ببيانات Firestore عند وصولها)
+  try {
+    const docs = localStorage.getItem(STORAGE_KEY);
+    documentsCache = docs ? JSON.parse(docs) : [];
+  } catch (e) {
+    console.error('Error loading local documents cache:', e);
+    documentsCache = [];
   }
 
-  function saveDocuments(documents) {
+  function persistLocal() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(documentsCache)); }
+    catch (e) { console.error('Error saving documents locally:', e); }
+  }
+
+  async function persistCloud() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(documents));
-      return true;
-    } catch (e) {
-      console.error('Error saving documents:', e);
-      return false;
-    }
+      if (typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db) {
+        await FirebaseCloudStorage.saveSiteData({documents: documentsCache}, 'app_data_documents');
+      }
+    } catch (e) { console.error('تعذّر حفظ المستندات على Firestore:', e); }
+  }
+
+  // Public methods
+  function getDocuments() {
+    return documentsCache;
   }
 
   function addDocument(documentData) {
-    const documents = getDocuments();
     const newDocument = {
-      id: 'doc_' + Date.now(),
+      id: 'doc_' + Date.now() + Math.random().toString(16).slice(2,6),
       orderId: documentData.orderId || null,
       productId: documentData.productId || null,
       productName: documentData.productName || '',
@@ -12496,25 +12556,26 @@ const DocumentsModule = (function() {
       uploadDate: new Date().toISOString(),
       status: 'pending'
     };
-    
-    documents.push(newDocument);
-    return saveDocuments(documents) ? newDocument : null;
+
+    documentsCache.unshift(newDocument);
+    persistLocal();
+    persistCloud();
+    return newDocument;
   }
 
   function deleteDocument(documentId) {
-    const documents = getDocuments();
-    const filtered = documents.filter(doc => doc.id !== documentId);
-    return saveDocuments(filtered);
+    documentsCache = documentsCache.filter(doc => doc.id !== documentId);
+    persistLocal();
+    persistCloud();
+    return true;
   }
 
   function getDocumentById(documentId) {
-    const documents = getDocuments();
-    return documents.find(doc => doc.id === documentId);
+    return documentsCache.find(doc => doc.id === documentId);
   }
 
   function getDocumentsByOrder(orderId) {
-    const documents = getDocuments();
-    return documents.filter(doc => doc.orderId === orderId);
+    return documentsCache.filter(doc => doc.orderId === orderId);
   }
 
   function downloadDocument(documentId) {
@@ -12536,6 +12597,12 @@ const DocumentsModule = (function() {
     }
   }
 
+  // يُستدعى من مستمع Firestore اللحظي لتحديث النسخة المحلية عند وصول مستندات جديدة من أي زائر
+  function setCloudCache(list) {
+    documentsCache = Array.isArray(list) ? list : [];
+    persistLocal();
+  }
+
   // Public API
   return {
     getDocuments,
@@ -12543,7 +12610,8 @@ const DocumentsModule = (function() {
     deleteDocument,
     getDocumentById,
     getDocumentsByOrder,
-    downloadDocument
+    downloadDocument,
+    setCloudCache
   };
 })();
 
@@ -14474,7 +14542,7 @@ function renderPromotionsSection() {
     flashSaleGrid.innerHTML = discountProducts.map(p => `
       <div class="card" style="position:relative">
         <span class="card-offer">🔥 ${p.promoDiscount}% خصم</span>
-        <div class="card-media" data-open-product-modal="${p.id}">
+        <div class="card-media" data-open-product="${p.id}">
           ${productMedia(p)}
         </div>
         <div class="card-body">
@@ -14504,9 +14572,23 @@ function renderPromotionsSection() {
               <span class="cd-lbl">ث</span>
             </div>
           </div>
+          <button class="card-order" data-order="${p.id}" style="max-height:44px;opacity:1;padding:11px 0;margin-top:10px;">
+            <svg class="icon" style="width:15px;height:15px"><use href="#ic-msg"/></svg> ${t('orderNowBtn')}
+          </button>
         </div>
       </div>
     `).join('');
+
+    // Wire up clicks: card/media opens the product, order button opens it too (stopping propagation)
+    flashSaleGrid.querySelectorAll('[data-open-product]').forEach(el => {
+      el.addEventListener('click', () => openProduct(el.dataset.openProduct));
+    });
+    flashSaleGrid.querySelectorAll('[data-order]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openProduct(btn.dataset.order);
+      });
+    });
 
     // Start countdown timers
     startCountdownTimers();
@@ -14581,14 +14663,71 @@ function renderPromotionsSection() {
                   <span class="cd-lbl">ث</span>
                 </div>
               </div>
+              <button class="card-order" data-order-package="${promo.id}" style="max-height:44px;opacity:1;padding:11px 0;margin-top:10px;">
+                <svg class="icon" style="width:15px;height:15px"><use href="#ic-msg"/></svg> ${t('orderNowBtn')}
+              </button>
             </div>
           </div>
         `;
       }).join('');
+
+      packageGrid.querySelectorAll('[data-order-package]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const promo = packagePromos.find(pr => pr.id === btn.dataset.orderPackage);
+          if(promo) orderPackageViaWhatsapp(promo);
+        });
+      });
     }
   } else if(packageSection) {
     packageSection.style.display = 'none';
   }
+}
+
+async function logPackageOrder(promo, products){
+  const order = {
+    id:'o'+Date.now()+Math.random().toString(16).slice(2,6),
+    productId: promo.id,
+    productName: '📦 باكج: ' + L(promo.title),
+    sku: 'PKG-' + promo.id,
+    size: '-', color: '-',
+    qty: products.length,
+    customText: products.map(p => L(p.name)).join('، '),
+    font: '',
+    customerPhoto: '',
+    productTotal: promo.packagePrice,
+    shippingCost: 0,
+    total: promo.packagePrice,
+    deliveryType: 'pickup',
+    customerName: 'زائر تواصل عبر واتساب مباشرة',
+    customerPhone: '', customerPhone2: '', address: '', zone: '',
+    guestId: state.guestId, time:new Date().toISOString(), status:'جديد'
+  };
+  const orders = await getOrders();
+  orders.unshift(order);
+  await saveOrders(orders);
+  await logActivity('زائر ' + state.guestId, `طلب باكج جديد: ${L(promo.title)} — ${order.total} ₪`);
+  return order;
+}
+
+async function orderPackageViaWhatsapp(promo){
+  const products = promo.productIds.map(pid => PRODUCTS.find(p => p.id === pid)).filter(Boolean);
+  const savings = promo.originalTotal - promo.packagePrice;
+  const lines = [
+    '📦 طلب باكج خاص',
+    '─────────────────────────────────────',
+    `اسم الباكج: ${L(promo.title)}`,
+    '',
+    'المنتجات المشمولة:',
+    ...products.map(p => `• ${L(p.name)}`),
+    '',
+    `سعر الباكج: ${promo.packagePrice} ₪ (بدلاً من ${promo.originalTotal} ₪ — توفير ${savings} ₪)`,
+    '',
+    'أرغب بطلب هذا الباكج، يرجى التواصل معي لإتمام الطلب.',
+  ];
+  const text = encodeURIComponent(lines.join('\n'));
+  await logPackageOrder(promo, products);
+  window.open(`https://wa.me/${STORE_WHATSAPP}?text=${text}`, '_blank');
 }
 
 function startCountdownTimers() {
@@ -15963,14 +16102,14 @@ function renderSuggestionsTab() {
 }
 
 window.markSuggestionAsRead = async function(id) {
-  updateSuggestionStatus(id, 'read');
+  await updateSuggestionStatus(id, 'read');
   await logActivity('المدير', `علّم اقتراح كمقروء: ${id}`);
   renderSuggestionsTab();
   toast('تم تعيين الاقتراح كمقروء');
 }
 
 window.archiveSuggestion = async function(id) {
-  updateSuggestionStatus(id, 'archived');
+  await updateSuggestionStatus(id, 'archived');
   await logActivity('المدير', `أرشف اقتراح: ${id}`);
   renderSuggestionsTab();
   toast('تم أرشفة الاقتراح');
@@ -15978,7 +16117,7 @@ window.archiveSuggestion = async function(id) {
 
 window.deleteSuggestion = async function(id) {
   if(!confirm('هل أنت متأكد من حذف هذا الاقتراح؟')) return;
-  deleteSuggestion(id);
+  await removeSuggestionRecord(id);
   await logActivity('المدير', `حذف اقتراح: ${id}`);
   renderSuggestionsTab();
   toast('تم حذف الاقتراح بنجاح');
@@ -15987,7 +16126,7 @@ window.deleteSuggestion = async function(id) {
 window.clearReadSuggestions = async function() {
   if(!confirm('هل أنت متأكد من حذف جميع الاقتراحات المقروءة والمؤرشفة؟')) return;
   SUGGESTIONS = SUGGESTIONS.filter(s => s.status === 'new');
-  saveSuggestions();
+  await saveSuggestions();
   await logActivity('المدير', 'مسح الاقتراحات المقروءة والمؤرشفة');
   renderSuggestionsTab();
   toast('تم مسح الاقتراحات القديمة');
@@ -17934,57 +18073,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-/* ---- 25. MOBILE THUMB-FRIENDLY CTA BUTTONS ---- */
-(function(){
-  const mobileCTA = document.createElement('div');
-  mobileCTA.className = 'mobile-cta-bar';
-  mobileCTA.innerHTML = `
-    <a href="tel:+972597217721" class="mobile-cta-btn mobile-cta-call">
-      <svg class="icon"><use href="#ic-phone"/></svg>
-      <span>اتصل الآن</span>
-    </a>
-    <button class="mobile-cta-btn mobile-cta-cart" id="mobileCartBtn">
-      <svg class="icon"><use href="#ic-box"/></svg>
-      <span>السلة</span>
-      <span class="mobile-cart-count" id="mobileCartCount">0</span>
-    </button>
-  `;
-  document.body.appendChild(mobileCTA);
-  
-  // Show only on mobile (unless a product modal is currently open)
-  const showMobileCTA = () => {
-    if(mobileCTA.dataset.productOpen === '1') { mobileCTA.classList.remove('visible'); return; }
-    mobileCTA.classList.toggle('visible', window.innerWidth < 768);
-  };
-  
-  window.addEventListener('resize', showMobileCTA);
-  showMobileCTA();
-  
-  // Allow other parts of the app (product modal open/close) to hide/show this bar
-  window.setMobileCtaProductOpen = (isOpen) => {
-    mobileCTA.dataset.productOpen = isOpen ? '1' : '0';
-    showMobileCTA();
-  };
-  
-  // Update cart count
-  const updateMobileCartCount = () => {
-    const countEl = document.getElementById('mobileCartCount');
-    if(countEl) countEl.textContent = cart.length;
-  };
-  
-  // Hook into cart updates
-  const origUpdateCartUI = window.updateCartUI;
-  if(typeof origUpdateCartUI === 'function'){
-    window.updateCartUI = function(){
-      origUpdateCartUI.apply(this, arguments);
-      updateMobileCartCount();
-    };
-  }
-  
-  document.getElementById('mobileCartBtn')?.addEventListener('click', () => {
-    document.getElementById('cartModal').classList.toggle('open');
-  });
-})();
+/* ---- 25. (removed) Mobile thumb-friendly CTA bar — cart access now lives in the header and the app-mode bottom nav ---- */
 
 /* ---- 26. FOOTER GOOGLE MAPS LINK ---- */
 (function(){
@@ -19286,6 +19375,55 @@ setTimeout(() => {
       renderModal();
     }
   });
+
+  // 5ب) مزامنة الطلبات (بما فيها طلبات الواتساب) — استماع لحظي + تنبيه الأدمن بطلب جديد
+  FirebaseCloudStorage.loadSiteData('app_data_orders').then(data => {
+    if(data && Array.isArray(data.orders)) ORDERS_CACHE = data.orders;
+    let firstOrdersLoad = true;
+    FirebaseCloudStorage.listenSiteData('app_data_orders', (liveData) => {
+      if(!liveData || !Array.isArray(liveData.orders)) return;
+      const isNewOrder = !firstOrdersLoad && liveData.orders.length > ORDERS_CACHE.length;
+      ORDERS_CACHE = liveData.orders;
+      firstOrdersLoad = false;
+      if(typeof renderOrdersTab === 'function') renderOrdersTab();
+      if(isNewOrder && document.body.classList.contains('admin-mode') && typeof toast === 'function'){
+        toast('📦 وصل طلب جديد!');
+      }
+    });
+  }).catch(err => console.error('تعذّر تحميل الطلبات من Firestore:', err));
+
+  // 5ج) مزامنة اقتراحات تطوير الموقع — استماع لحظي + تنبيه الأدمن باقتراح جديد
+  FirebaseCloudStorage.loadSiteData('app_data_suggestions').then(data => {
+    if(data && Array.isArray(data.suggestions)) SUGGESTIONS = data.suggestions;
+    let firstSuggestionsLoad = true;
+    FirebaseCloudStorage.listenSiteData('app_data_suggestions', (liveData) => {
+      if(!liveData || !Array.isArray(liveData.suggestions)) return;
+      const isNewSuggestion = !firstSuggestionsLoad && liveData.suggestions.length > SUGGESTIONS.length;
+      SUGGESTIONS = liveData.suggestions;
+      firstSuggestionsLoad = false;
+      if(typeof renderSuggestionsTab === 'function') renderSuggestionsTab();
+      if(isNewSuggestion && document.body.classList.contains('admin-mode') && typeof toast === 'function'){
+        toast('💬 وصل اقتراح جديد من زائر!');
+      }
+    });
+  }).catch(err => console.error('تعذّر تحميل الاقتراحات من Firestore:', err));
+
+  // 5د) مزامنة المستندات المرفقة (صور/ملفات يرفعها الزوار) — استماع لحظي + تنبيه الأدمن
+  FirebaseCloudStorage.loadSiteData('app_data_documents').then(data => {
+    if(data && Array.isArray(data.documents)) DocumentsModule.setCloudCache(data.documents);
+    let firstDocsLoad = true;
+    FirebaseCloudStorage.listenSiteData('app_data_documents', (liveData) => {
+      if(!liveData || !Array.isArray(liveData.documents)) return;
+      const prevCount = DocumentsModule.getDocuments().length;
+      const isNewDoc = !firstDocsLoad && liveData.documents.length > prevCount;
+      DocumentsModule.setCloudCache(liveData.documents);
+      firstDocsLoad = false;
+      if(typeof renderDocumentsTab === 'function') renderDocumentsTab();
+      if(isNewDoc && document.body.classList.contains('admin-mode') && typeof toast === 'function'){
+        toast('📎 وصل ملف/صورة جديدة من زائر!');
+      }
+    });
+  }).catch(err => console.error('تعذّر تحميل المستندات من Firestore:', err));
 
   // 6) إشعار وارد والموقع مفتوح في المقدمة
   FirebaseCloudStorage.onForegroundMessage((payload) => {
