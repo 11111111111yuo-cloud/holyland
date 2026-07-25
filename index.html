@@ -6521,6 +6521,31 @@ let OCCASIONS = [
 function materialLabel(id){ const m = MATERIALS.find(x=>x.id===id); return m ? L(m) : (id||''); }
 function occasionLabel(id){ const o = OCCASIONS.find(x=>x.id===id); return o ? L(o) : (id||''); }
 
+/* دعم تعدد الخامات/المناسبات لكل منتج مع التوافق مع البيانات القديمة (خامة/مناسبة واحدة) */
+function productMaterialIds(p){
+  if(p && Array.isArray(p.materialIds) && p.materialIds.length) return p.materialIds;
+  if(p && p.materialId) return [p.materialId];
+  return [];
+}
+function productOccasionIds(p){
+  if(p && Array.isArray(p.occasionIds) && p.occasionIds.length) return p.occasionIds;
+  if(p && p.occasionId) return [p.occasionId];
+  return [];
+}
+function materialLabels(p){ return productMaterialIds(p).map(materialLabel).filter(Boolean).join('، '); }
+function occasionLabels(p){ return productOccasionIds(p).map(occasionLabel).filter(Boolean).join('، '); }
+
+/* دعم تدرج أسعار الجملة لكل منتج مع التوافق مع البيانات القديمة (شريحة واحدة) */
+function getWholesaleTiers(p){
+  if(p && Array.isArray(p.wholesaleTiers) && p.wholesaleTiers.length){
+    return p.wholesaleTiers.slice().sort((a,b)=>a.qty-b.qty);
+  }
+  if(p && p.wholesale && p.wholesale.qty && p.wholesale.price){
+    return [{qty:p.wholesale.qty, price:p.wholesale.price}];
+  }
+  return [];
+}
+
 /* ============================================================
    COMPANIES DATA STRUCTURE
    ============================================================ */
@@ -8465,7 +8490,7 @@ let PRODUCTS = [
    colors:[{label:'خشب طبيعي',hex:'#A3732C'},{label:'أبيض عاجي',hex:'#F9F8F3'}],
    views:152, orders:33, createdAt:'2026-02-22', offer:null, minOrderQty:null, wholesale:null, companyId: ''},
 
-  {id:'p7',sku:'COR-002',category:'corporate',materialId:'acrylic_wood_base',occasionId:'corporate_wholesale',prepTime:'6 ساعات',
+  {id:'p7',sku:'COR-002',category:'corporate',materialIds:['acrylic_wood_base','mdf'],occasionIds:['corporate_wholesale','corporate_gifts'],prepTime:'6 ساعات',
    name:{ar:'دروع تكريم موظفين — طلبية جملة', en:'Employee Honor Shields — Bulk Order', he:'מגני הצטיינות לעובדים — הזמנה סיטונאית'},
    desc:{ar:'دروع تكريم موحّدة التصميم لمناسبات نهاية السنة، بأسماء مختلفة لكل موظف، بسعر جملة عند الكمية.',
      en:"Uniformly designed honor shields for year-end occasions, each with a different employee's name, at a wholesale price for quantity orders.",
@@ -8473,7 +8498,7 @@ let PRODUCTS = [
    sizes:[{label:'قطعة واحدة',price:55}],
    colors:[{label:'أكريليك شفاف',hex:'#cfd6c2'}],
    views:210, orders:18, createdAt:'2026-05-02', offer:null,
-   minOrderQty:15, wholesale:null, companyId: ''},
+   minOrderQty:15, wholesaleTiers:[{qty:15,price:48},{qty:30,price:42},{qty:50,price:36}], companyId: ''},
 
   {id:'p8',sku:'GFT-002',category:'gifts',materialId:'leather_metal',occasionId:'personalized',prepTime:'45 دقيقة',
    name:{ar:'ميدالية مفاتيح جلدية محفورة بالاسم', en:'Leather Keychain Engraved with Name', he:'מחזיק מפתחות מעור חרוט בשם'},
@@ -8484,7 +8509,7 @@ let PRODUCTS = [
    colors:[{label:'بني',hex:'#7a5620'},{label:'أسود',hex:'#0E110A'}],
    views:340, orders:140, createdAt:'2026-06-20',
    offer:{oldPrice:25,newPrice:18,until:'2026-07-05'}, minOrderQty:null, companyId: '',
-   wholesale:{qty:10,price:14}},
+   wholesaleTiers:[{qty:2,price:20},{qty:10,price:14}]},
 
   {id:'p9',sku:'AWD-002',category:'awards',materialId:'crystal',occasionId:'honor',prepTime:'5 ساعات',
    name:{ar:'درع كريستال فاخر بنقش داخلي ثلاثي الأبعاد', en:'Luxury Crystal Shield with Internal 3D Engraving', he:'מגן קריסטל יוקרתי WITH חריטה תלת-מימדית פנימית'},
@@ -9680,10 +9705,10 @@ function renderCategoryChips(){
    FILTER / SEARCH LOGIC
    ============================================================ */
 function searchHay(p){
-  const mat = MATERIALS.find(m=>m.id===p.materialId);
-  const occ = OCCASIONS.find(o=>o.id===p.occasionId);
+  const mats = productMaterialIds(p).map(id=>MATERIALS.find(m=>m.id===id));
+  const occs = productOccasionIds(p).map(id=>OCCASIONS.find(o=>o.id===id));
   const cat = catMap[p.category];
-  return [allLangValues(p.name), allLangValues(p.desc), allLangValues(mat), allLangValues(occ), allLangValues(cat?.label)].join(' ').toLowerCase();
+  return [allLangValues(p.name), allLangValues(p.desc), ...mats.map(allLangValues), ...occs.map(allLangValues), allLangValues(cat?.label)].join(' ').toLowerCase();
 }
 function allLangValues(field){
   if(!field) return '';
@@ -9699,8 +9724,8 @@ function getFilteredProducts(){
   if(state.activePartner) list = list.filter(p=>p.partnerId===state.activePartner);
 
   if(state.filters.cats.size) list = list.filter(p=>state.filters.cats.has(p.category));
-  if(state.filters.materials.size) list = list.filter(p=>state.filters.materials.has(p.materialId));
-  if(state.filters.occasions.size) list = list.filter(p=>state.filters.occasions.has(p.occasionId));
+  if(state.filters.materials.size) list = list.filter(p=>productMaterialIds(p).some(id=>state.filters.materials.has(id)));
+  if(state.filters.occasions.size) list = list.filter(p=>productOccasionIds(p).some(id=>state.filters.occasions.has(id)));
   list = list.filter(p=> basePrice(p) <= state.filters.budget);
 
   if(state.search.trim()){
@@ -9773,7 +9798,7 @@ function renderGrid(){
         <h3 class="card-name">${L(p.name)}</h3>
         <p class="card-desc">${L(p.desc)}</p>
         <div class="card-meta">
-          <span class="tag">${materialLabel(p.materialId)}</span>
+          <span class="tag">${materialLabels(p) || '—'}</span>
           <span class="tag">${p.prepTime}</span>
         </div>
         <div class="card-price-row">${priceHtml}</div>
@@ -9861,9 +9886,14 @@ function computePricing(p, sel){
   if(isOfferActive(p)) unit = p.offer.newPrice;
   let qty = sel.qty;
   let wholesaleApplied = false;
-  if(p.wholesale && qty >= p.wholesale.qty){ unit = p.wholesale.price; wholesaleApplied = true; }
+  let appliedTier = null;
+  // تدرج أسعار الجملة: نختار أعلى شريحة كمية تحققت (كلما زادت الكمية قلّ سعر القطعة)
+  const tiers = getWholesaleTiers(p);
+  for(const tier of tiers){
+    if(qty >= tier.qty){ unit = tier.price; wholesaleApplied = true; appliedTier = tier; }
+  }
   const total = unit * qty;
-  return {unit, qty, total, wholesaleApplied};
+  return {unit, qty, total, wholesaleApplied, appliedTier, tiers};
 }
 
 function renderModal(){
@@ -9906,8 +9936,8 @@ function renderModal(){
     </div>
     <p class="modal-desc">${L(p.desc)}</p>
     <div class="modal-tags">
-      <span class="tag">${materialLabel(p.materialId)}</span>
-      <span class="tag">${occasionLabel(p.occasionId)}</span>
+      ${productMaterialIds(p).map(id=>`<span class="tag">${materialLabel(id)}</span>`).join('')}
+      ${productOccasionIds(p).map(id=>`<span class="tag">${occasionLabel(id)}</span>`).join('')}
       <span class="tag">⏱ ${p.prepTime}</span>
     </div>
     ${p.video ? `<a href="${p.video}" target="_blank" rel="noopener" class="tag" style="color:var(--olive-light);border-color:var(--olive)">${t('videoLinkLabel')}</a>` : ''}
@@ -10044,7 +10074,9 @@ function renderModal(){
           <button id="qtyPlus" aria-label="+"><svg class="icon" style="width:14px;height:14px"><use href="#ic-plus"/></svg></button>
         </div>
         ${p.minOrderQty ? `<span class="note-line ${minWarn?'warn':''}">${t('minOrderNote')(p.minOrderQty)}${minWarn?t('minOrderWarnExtra'):''}</span>` : ''}
-        ${p.wholesale ? `<span class="note-line">${t('wholesaleNote')(p.wholesale.price,p.wholesale.qty)}${pricing.wholesaleApplied?t('wholesaleApplied'):''}</span>` : ''}
+        ${pricing.tiers && pricing.tiers.length ? `<div class="note-line" style="display:flex;flex-direction:column;gap:2px">
+          ${pricing.tiers.map(tier => `<span${pricing.appliedTier===tier?' style="color:var(--olive-light);font-weight:700"':''}>${t('wholesaleNote')(tier.price,tier.qty)}${pricing.appliedTier===tier?t('wholesaleApplied'):''}</span>`).join('')}
+        </div>` : ''}
       </div>
 
       <div class="price-box">
@@ -14761,8 +14793,8 @@ function showProductEditModal(id) {
     id: 'p_' + Date.now(),
     sku: '',
     category: CATEGORIES[0].key,
-    materialId: MATERIALS[0].id,
-    occasionId: OCCASIONS[0].id,
+    materialIds: [MATERIALS[0].id],
+    occasionIds: [OCCASIONS[0].id],
     prepTime: '2 ساعة',
     name: {ar:'', en:'', he:''},
     desc: {ar:'', en:'', he:''},
@@ -14771,7 +14803,7 @@ function showProductEditModal(id) {
     images: [],
     video: '',
     minOrderQty: null,
-    wholesale: null,
+    wholesaleTiers: [],
     companyId: '',
     visible: true
   };
@@ -14803,16 +14835,16 @@ function showProductEditModal(id) {
 
       <div class="form-grid">
         <div class="field">
-          <label class="field-label">الخامة</label>
-          <select class="txt-input" id="edit_material">
-            ${MATERIALS.map(m => `<option value="${m.id}" ${m.id===p.materialId?'selected':''}>${L(m)}</option>`).join('')}
-          </select>
+          <label class="field-label">الخامة (يمكن اختيار أكثر من خامة)</label>
+          <div class="panel" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+            ${MATERIALS.map(m => `<label class="checkrow"><input type="checkbox" class="edit-material-check" value="${m.id}" ${productMaterialIds(p).includes(m.id)?'checked':''}> ${L(m)}</label>`).join('')}
+          </div>
         </div>
         <div class="field">
-          <label class="field-label">المناسبة</label>
-          <select class="txt-input" id="edit_occasion">
-            ${OCCASIONS.map(o => `<option value="${o.id}" ${o.id===p.occasionId?'selected':''}>${L(o)}</option>`).join('')}
-          </select>
+          <label class="field-label">المناسبة (يمكن اختيار أكثر من مناسبة)</label>
+          <div class="panel" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+            ${OCCASIONS.map(o => `<label class="checkrow"><input type="checkbox" class="edit-occasion-check" value="${o.id}" ${productOccasionIds(p).includes(o.id)?'checked':''}> ${L(o)}</label>`).join('')}
+          </div>
         </div>
       </div>
 
@@ -14841,7 +14873,7 @@ function showProductEditModal(id) {
           ${p.sizes.map((s,i) => `
             <div class="size-row" data-idx="${i}">
               <input class="txt-input sz-lbl" value="${s.label}" placeholder="المقاس (مثال: 30 سم)">
-              <input class="txt-input sz-prc" type="number" value="${s.price}" placeholder="السعر بالشيكل">
+              <input class="txt-input sz-prc" type="number" step="0.01" inputmode="decimal" value="${s.price}" placeholder="السعر بالشيكل (يقبل كسور مثل 1.5)">
               <button type="button" class="remove-row-btn" data-remove-row>×</button>
             </div>
           `).join('')}
@@ -14887,11 +14919,11 @@ function showProductEditModal(id) {
       <div class="form-grid ${p.offer?'':'hidden'}" id="offerFields">
         <div class="field">
           <label class="field-label">السعر قبل التخفيض</label>
-          <input type="number" class="txt-input" id="offer_old" value="${p.offer?p.offer.oldPrice:''}">
+          <input type="number" step="0.01" inputmode="decimal" class="txt-input" id="offer_old" value="${p.offer?p.offer.oldPrice:''}">
         </div>
         <div class="field">
           <label class="field-label">السعر بعد التخفيض</label>
-          <input type="number" class="txt-input" id="offer_new" value="${p.offer?p.offer.newPrice:''}">
+          <input type="number" step="0.01" inputmode="decimal" class="txt-input" id="offer_new" value="${p.offer?p.offer.newPrice:''}">
         </div>
         <div class="field">
           <label class="field-label">تاريخ نهاية العرض</label>
@@ -14899,18 +14931,24 @@ function showProductEditModal(id) {
         </div>
       </div>
 
-      <div class="form-grid">
-        <div class="field">
-          <label class="field-label">الحد الأدنى للطلب (حقل رقمي)</label>
-          <input type="number" class="txt-input" id="edit_min_qty" value="${p.minOrderQty||''}">
+      <div class="field">
+        <label class="field-label">الحد الأدنى للطلب (حقل رقمي)</label>
+        <input type="number" class="txt-input" id="edit_min_qty" value="${p.minOrderQty||''}">
+      </div>
+
+      <div class="panel">
+        <h3>تدرج أسعار الجملة (كلما زادت الكمية قلّ سعر القطعة)</h3>
+        <p class="note-line" style="margin-bottom:8px">مثال: من 2 قطعة السعر 5₪ للقطعة، ومن 7 قطع فأكثر السعر 3₪ للقطعة.</p>
+        <div id="edit_wholesale_wrap">
+          ${getWholesaleTiers(p).map((tr,i) => `
+            <div class="size-row" data-idx="${i}">
+              <input class="txt-input wh-qty" type="number" step="1" min="1" value="${tr.qty}" placeholder="عدد القطع من">
+              <input class="txt-input wh-prc" type="number" step="0.01" inputmode="decimal" value="${tr.price}" placeholder="سعر القطعة">
+              <button type="button" class="remove-row-btn" data-remove-row>×</button>
+            </div>
+          `).join('')}
         </div>
-        <div class="field" style="display:flex;flex-direction:column;gap:4px">
-          <label class="field-label">سعر الجملة للكميات</label>
-          <div style="display:flex;gap:6px">
-            <input type="number" class="txt-input" id="wholesale_qty" value="${p.wholesale?p.wholesale.qty:''}" placeholder="عدد القطع من">
-            <input type="number" class="txt-input" id="wholesale_price" value="${p.wholesale?p.wholesale.price:''}" placeholder="سعر القطعة">
-          </div>
-        </div>
+        <button type="button" class="add-row-btn btn-block" id="addWholesaleRowBtn">+ إضافة شريحة كمية جديدة</button>
       </div>
 
       <div style="display:flex;gap:10px;margin-top:14px">
@@ -14923,6 +14961,19 @@ function showProductEditModal(id) {
   bindLangFields(form);
   backdrop.classList.add('open');
 
+  // إزالة صف (حجم/لون/شريحة جملة) أو صورة عند الضغط على ×
+  form.addEventListener('click', (e) => {
+    const removeBtn = e.target.closest('[data-remove-row]');
+    if(removeBtn) {
+      const row = removeBtn.closest('.size-row, .color-row');
+      if(row) row.remove();
+    }
+    const removeImgBtn = e.target.closest('[data-remove-img]');
+    if(removeImgBtn) {
+      removeImgBtn.closest('.img-thumb')?.remove();
+    }
+  });
+
   const sw = document.getElementById('offerToggle');
   const offFields = document.getElementById('offerFields');
   sw.addEventListener('click', () => {
@@ -14933,8 +14984,15 @@ function showProductEditModal(id) {
   document.getElementById('addSizeRowBtn').addEventListener('click', () => {
     const row = document.createElement('div');
     row.className = 'size-row';
-    row.innerHTML = `<input class="txt-input sz-lbl" placeholder="المقاس"><input class="txt-input sz-prc" type="number" placeholder="السعر"><button type="button" class="remove-row-btn" data-remove-row>×</button>`;
+    row.innerHTML = `<input class="txt-input sz-lbl" placeholder="المقاس"><input class="txt-input sz-prc" type="number" step="0.01" inputmode="decimal" placeholder="السعر (يقبل كسور مثل 1.5)"><button type="button" class="remove-row-btn" data-remove-row>×</button>`;
     document.getElementById('edit_sizes_wrap').appendChild(row);
+  });
+
+  document.getElementById('addWholesaleRowBtn').addEventListener('click', () => {
+    const row = document.createElement('div');
+    row.className = 'size-row';
+    row.innerHTML = `<input class="txt-input wh-qty" type="number" step="1" min="1" placeholder="عدد القطع من"><input class="txt-input wh-prc" type="number" step="0.01" inputmode="decimal" placeholder="سعر القطعة"><button type="button" class="remove-row-btn" data-remove-row>×</button>`;
+    document.getElementById('edit_wholesale_wrap').appendChild(row);
   });
 
   document.getElementById('addColorRowBtn').addEventListener('click', () => {
@@ -14990,12 +15048,20 @@ function showProductEditModal(id) {
       }
     }
 
-    let wholesale = null;
-    const wq = parseInt(document.getElementById('wholesale_qty').value);
-    const wp = parseFloat(document.getElementById('wholesale_price').value);
-    if(!isNaN(wq) && !isNaN(wp)) wholesale = {qty:wq, price:wp};
+    let wholesaleTiers = [];
+    document.querySelectorAll('#edit_wholesale_wrap .size-row').forEach(row => {
+      const wq = parseInt(row.querySelector('.wh-qty').value);
+      const wp = parseFloat(row.querySelector('.wh-prc').value);
+      if(!isNaN(wq) && wq > 0 && !isNaN(wp) && wp >= 0) wholesaleTiers.push({qty:wq, price:wp});
+    });
+    wholesaleTiers.sort((a,b) => a.qty - b.qty);
 
     const minQty = parseInt(document.getElementById('edit_min_qty').value);
+
+    const materialIds = Array.from(document.querySelectorAll('.edit-material-check:checked')).map(c => c.value);
+    const occasionIds = Array.from(document.querySelectorAll('.edit-occasion-check:checked')).map(c => c.value);
+    if(!materialIds.length) { toast('يجب اختيار خامة واحدة على الأقل!'); return; }
+    if(!occasionIds.length) { toast('يجب اختيار مناسبة واحدة على الأقل!'); return; }
 
     p.sku = document.getElementById('edit_sku').value.trim();
     p.category = document.getElementById('edit_cat').value;
@@ -15003,8 +15069,10 @@ function showProductEditModal(id) {
     await ensureLangFieldTranslated(form, 'desc');
     p.name = readLangField(form, 'name');
     p.desc = readLangField(form, 'desc');
-    p.materialId = document.getElementById('edit_material').value;
-    p.occasionId = document.getElementById('edit_occasion').value;
+    p.materialIds = materialIds;
+    p.occasionIds = occasionIds;
+    delete p.materialId;
+    delete p.occasionId;
     p.companyId = document.getElementById('edit_company').value || '';
     p.prepTime = document.getElementById('edit_preptime').value.trim();
     p.video = document.getElementById('edit_video').value.trim();
@@ -15013,7 +15081,8 @@ function showProductEditModal(id) {
     p.images = images;
     p.offer = offer;
     p.minOrderQty = !isNaN(minQty) && minQty > 0 ? minQty : null;
-    p.wholesale = wholesale;
+    p.wholesaleTiers = wholesaleTiers;
+    delete p.wholesale;
 
     const idx = PRODUCTS.findIndex(x => x.id === p.id);
     if(idx !== -1) PRODUCTS[idx] = p;
@@ -16444,7 +16513,7 @@ function showCompanyPage(slug) {
               <h3 class="card-name">${L(p.name)}</h3>
               <p class="card-desc">${L(p.desc)}</p>
               <div class="card-meta">
-                <span class="tag">${materialLabel(p.materialId)}</span>
+                <span class="tag">${materialLabels(p) || '—'}</span>
                 <span class="tag">${p.prepTime}</span>
               </div>
               <div class="card-price-row">${priceHtml}</div>
@@ -17186,7 +17255,11 @@ function openCompareModal(){
   if(!p1 || !p2) return;
   const L2 = (typeof L === 'function') ? L : (x => x?.ar || x || '');
   const pr = (typeof priceRange === 'function') ? priceRange : (p => '');
-  const matLbl = (typeof materialLabel === 'function') ? materialLabel : (id => id);
+  const matLbl = (typeof materialLabels === 'function') ? materialLabels : (p => p?.materialId || '');
+  const whLbl = (p) => {
+    const tiers = (typeof getWholesaleTiers === 'function') ? getWholesaleTiers(p) : [];
+    return tiers.length ? tiers.map(tr=>`${tr.price} ₪ / ${tr.qty}+`).join('، ') : '—';
+  };
   const rows = [
     ['الصورة',
       (p1.images && p1.images[0]) ? `<img src="${p1.images[0]}" style="width:80px;height:80px;object-fit:cover;border-radius:3px">` : '—',
@@ -17195,11 +17268,11 @@ function openCompareModal(){
     ['الاسم', `<b>${L2(p1.name)}</b>`, `<b>${L2(p2.name)}</b>`],
     ['رمز SKU', `<code>${p1.sku}</code>`, `<code>${p2.sku}</code>`],
     ['السعر', `<b style="color:var(--olive-light)">${pr(p1)}</b>`, `<b style="color:var(--olive-light)">${pr(p2)}</b>`],
-    ['الخامة', matLbl(p1.materialId), matLbl(p2.materialId)],
+    ['الخامة', matLbl(p1) || '—', matLbl(p2) || '—'],
     ['وقت التنفيذ', p1.prepTime || '—', p2.prepTime || '—'],
     ['الوصف', L2(p1.desc) || '—', L2(p2.desc) || '—'],
     ['الحد الأدنى للطلب', p1.minOrderQty ? `${p1.minOrderQty} قطعة` : 'غير محدد', p2.minOrderQty ? `${p2.minOrderQty} قطعة` : 'غير محدد'],
-    ['سعر الجملة', p1.wholesale ? `${p1.wholesale.price} ₪ / ${p1.wholesale.qty}+` : '—', p2.wholesale ? `${p2.wholesale.price} ₪ / ${p2.wholesale.qty}+` : '—'],
+    ['سعر الجملة', whLbl(p1), whLbl(p2)],
   ];
   const inner = modal.querySelector('.compare-modal-inner');
   if(!inner) return;
