@@ -15021,7 +15021,7 @@ function showProductEditModal(id) {
     e.preventDefault();
     
     const sizes = [];
-    document.querySelectorAll('.size-row').forEach(row => {
+    document.querySelectorAll('#edit_sizes_wrap .size-row').forEach(row => {
       const lbl = row.querySelector('.sz-lbl').value.trim();
       const prc = parseFloat(row.querySelector('.sz-prc').value);
       if(lbl && !isNaN(prc)) sizes.push({label:lbl, price:prc});
@@ -15029,14 +15029,14 @@ function showProductEditModal(id) {
     if(!sizes.length) { toast('يجب إضافة حجم واحد على الأقل!'); return; }
 
     const colors = [];
-    document.querySelectorAll('.color-row').forEach(row => {
+    document.querySelectorAll('#edit_colors_wrap .color-row').forEach(row => {
       const lbl = row.querySelector('.cl-lbl').value.trim();
       const hex = row.querySelector('.cl-hex').value;
       if(lbl) colors.push({label:lbl, hex});
     });
 
     const images = [];
-    document.querySelectorAll('.img-thumb img').forEach(img => images.push(img.src));
+    document.querySelectorAll('#edit_images_wrap .img-thumb img').forEach(img => images.push(img.src));
 
     let offer = null;
     if(sw.classList.contains('on')) {
