@@ -6535,8 +6535,13 @@ function productOccasionIds(p){
 function materialLabels(p){ return productMaterialIds(p).map(materialLabel).filter(Boolean).join('، '); }
 function occasionLabels(p){ return productOccasionIds(p).map(occasionLabel).filter(Boolean).join('، '); }
 
-/* دعم تدرج أسعار الجملة لكل منتج مع التوافق مع البيانات القديمة (شريحة واحدة) */
-function getWholesaleTiers(p){
+/* دعم تدرج أسعار الجملة الخاص بكل حجم على حدة، مع التوافق مع البيانات القديمة
+   (شريحة/شرائح جملة كانت مشتركة لكل أحجام المنتج) */
+function getWholesaleTiers(sizeObj, p){
+  if(sizeObj && Array.isArray(sizeObj.wholesaleTiers) && sizeObj.wholesaleTiers.length){
+    return sizeObj.wholesaleTiers.slice().sort((a,b)=>a.qty-b.qty);
+  }
+  // توافق مع بيانات قديمة: شرائح جملة كانت على مستوى المنتج بأكمله (مشتركة لكل الأحجام)
   if(p && Array.isArray(p.wholesaleTiers) && p.wholesaleTiers.length){
     return p.wholesaleTiers.slice().sort((a,b)=>a.qty-b.qty);
   }
@@ -8495,21 +8500,20 @@ let PRODUCTS = [
    desc:{ar:'دروع تكريم موحّدة التصميم لمناسبات نهاية السنة، بأسماء مختلفة لكل موظف، بسعر جملة عند الكمية.',
      en:"Uniformly designed honor shields for year-end occasions, each with a different employee's name, at a wholesale price for quantity orders.",
      he:'מגני הצטיינות בעיצוב אחיד לאירועי סוף שנה, עם שם שונה לכל עובד, במחיר סיטונאי בהזמנת כמות.'},
-   sizes:[{label:'قطعة واحدة',price:55}],
+   sizes:[{label:'قطعة واحدة',price:55,wholesaleTiers:[{qty:15,price:48},{qty:30,price:42},{qty:50,price:36}]}],
    colors:[{label:'أكريليك شفاف',hex:'#cfd6c2'}],
    views:210, orders:18, createdAt:'2026-05-02', offer:null,
-   minOrderQty:15, wholesaleTiers:[{qty:15,price:48},{qty:30,price:42},{qty:50,price:36}], companyId: ''},
+   minOrderQty:15, companyId: ''},
 
   {id:'p8',sku:'GFT-002',category:'gifts',materialId:'leather_metal',occasionId:'personalized',prepTime:'45 دقيقة',
    name:{ar:'ميدالية مفاتيح جلدية محفورة بالاسم', en:'Leather Keychain Engraved with Name', he:'מחזיק מפתחות מעור חרוט בשם'},
    desc:{ar:'ميدالية مفاتيح من الجلد الطبيعي مع شريحة معدنية محفورة بالاسم أو حرف مختصر.',
      en:'A genuine leather keychain with a metal tag engraved with a name or initial.',
      he:'מחזיק מפתחות מעור טבעי עם תג מתכת חרוט בשם או באות ראשונה.'},
-   sizes:[{label:'مقاس واحد',price:25}],
+   sizes:[{label:'مقاس واحد',price:25,wholesaleTiers:[{qty:2,price:20},{qty:10,price:14}]}],
    colors:[{label:'بني',hex:'#7a5620'},{label:'أسود',hex:'#0E110A'}],
    views:340, orders:140, createdAt:'2026-06-20',
-   offer:{oldPrice:25,newPrice:18,until:'2026-07-05'}, minOrderQty:null, companyId: '',
-   wholesaleTiers:[{qty:2,price:20},{qty:10,price:14}]},
+   offer:{oldPrice:25,newPrice:18,until:'2026-07-05'}, minOrderQty:null, companyId: ''},
 
   {id:'p9',sku:'AWD-002',category:'awards',materialId:'crystal',occasionId:'honor',prepTime:'5 ساعات',
    name:{ar:'درع كريستال فاخر بنقش داخلي ثلاثي الأبعاد', en:'Luxury Crystal Shield with Internal 3D Engraving', he:'מגן קריסטל יוקרתי WITH חריטה תלת-מימדית פנימית'},
@@ -8587,25 +8591,35 @@ async function saveFavorites(){
 /* ============================================================
    SHARED DATA LAYER
    ============================================================ */
+let PRODUCTS_KNOWN_IDS = new Set();
 async function initProducts(){
   try{
     if(typeof FirebaseCloudStorage === 'undefined' || !FirebaseCloudStorage.db){
       console.warn('Firestore غير متاح — لن تُحمَّل المنتجات المنشورة. تأكد من ضبط firebase-config.js');
       return;
     }
-    const data = await FirebaseCloudStorage.loadSiteData('app_data_products');
-    if(data && Array.isArray(data.products) && data.products.length){
-      PRODUCTS = data.products;
+    // كل منتج يُخزَّن في مستند خاص به بمجموعة (products) بدل تخزين كل المنتجات في مستند واحد،
+    // حتى لا يقتصر عدد المنتجات على حد حجم المستند الواحد في Firestore (1MB)
+    const snap = await FirebaseCloudStorage.db.collection('products').get();
+    if(!snap.empty){
+      PRODUCTS = snap.docs.map(d => d.data());
     }else{
-      // أول تشغيل: انشر بيانات المنتجات الافتراضية على Firestore ليراها الجميع
-      await FirebaseCloudStorage.saveSiteData({products: PRODUCTS}, 'app_data_products');
+      // أول تشغيل: انشر بيانات المنتجات الافتراضية، كل منتج في مستند مستقل
+      await Promise.all(PRODUCTS.map(p => FirebaseCloudStorage.db.collection('products').doc(String(p.id)).set(p)));
     }
+    PRODUCTS_KNOWN_IDS = new Set(PRODUCTS.map(p=>p.id));
   }catch(e){ console.error('تعذّر تحميل المنتجات من Firestore:', e); }
 }
 async function saveProducts(){
   try{
     if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
-      await FirebaseCloudStorage.saveSiteData({products: PRODUCTS}, 'app_data_products');
+      const currentIds = new Set(PRODUCTS.map(p=>p.id));
+      // احفظ كل منتج حالي في مستنده الخاص (لا يوجد حد أقصى لعدد المنتجات)
+      await Promise.all(PRODUCTS.map(p => FirebaseCloudStorage.db.collection('products').doc(String(p.id)).set(p)));
+      // احذف مستندات المنتجات المحذوفة محلياً
+      const removed = [...PRODUCTS_KNOWN_IDS].filter(id => !currentIds.has(id));
+      await Promise.all(removed.map(id => FirebaseCloudStorage.db.collection('products').doc(String(id)).delete()));
+      PRODUCTS_KNOWN_IDS = currentIds;
     }
   }catch(e){ console.error('Firebase save error:', e); }
   // Update UI immediately after save
@@ -8753,21 +8767,31 @@ async function saveSettings(){
 }
 
 /* ---- exhibitions & registrations ---- */
+let EXHIBITIONS_KNOWN_IDS = new Set();
 async function initExhibitions(){
   if(typeof FirebaseCloudStorage === 'undefined' || !FirebaseCloudStorage.db){
     console.warn('Firestore غير متاح — لن تُحمَّل المعارض المنشورة.');
     return;
   }
   try{
-    const data = await FirebaseCloudStorage.loadSiteData('app_data_exhibitions');
-    if(data && Array.isArray(data.exhibitions) && data.exhibitions.length) EXHIBITIONS = data.exhibitions;
-    else await FirebaseCloudStorage.saveSiteData({exhibitions: EXHIBITIONS}, 'app_data_exhibitions');
+    // كل معرض/منشور في مستند مستقل بدل مستند واحد يحوي الكل، فلا يبقى هناك حد أقصى للعدد
+    const snap = await FirebaseCloudStorage.db.collection('exhibitions').get();
+    if(!snap.empty){
+      EXHIBITIONS = snap.docs.map(d => d.data());
+    }else{
+      await Promise.all(EXHIBITIONS.map(x => FirebaseCloudStorage.db.collection('exhibitions').doc(String(x.id)).set(x)));
+    }
+    EXHIBITIONS_KNOWN_IDS = new Set(EXHIBITIONS.map(x=>x.id));
   }catch(e){ console.error('تعذّر تحميل المعارض من Firestore:', e); }
 }
 async function saveExhibitions(){
   try{
     if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
-      await FirebaseCloudStorage.saveSiteData({exhibitions: EXHIBITIONS}, 'app_data_exhibitions');
+      const currentIds = new Set(EXHIBITIONS.map(x=>x.id));
+      await Promise.all(EXHIBITIONS.map(x => FirebaseCloudStorage.db.collection('exhibitions').doc(String(x.id)).set(x)));
+      const removed = [...EXHIBITIONS_KNOWN_IDS].filter(id => !currentIds.has(id));
+      await Promise.all(removed.map(id => FirebaseCloudStorage.db.collection('exhibitions').doc(String(id)).delete()));
+      EXHIBITIONS_KNOWN_IDS = currentIds;
     }
   }catch(e){ console.error('Firebase save error:', e); }
   // Update UI immediately after save
@@ -9887,8 +9911,8 @@ function computePricing(p, sel){
   let qty = sel.qty;
   let wholesaleApplied = false;
   let appliedTier = null;
-  // تدرج أسعار الجملة: نختار أعلى شريحة كمية تحققت (كلما زادت الكمية قلّ سعر القطعة)
-  const tiers = getWholesaleTiers(p);
+  // تدرج أسعار الجملة الخاص بهذا الحجم تحديداً: نختار أعلى شريحة كمية تحققت
+  const tiers = getWholesaleTiers(sizeObj, p);
   for(const tier of tiers){
     if(qty >= tier.qty){ unit = tier.price; wholesaleApplied = true; appliedTier = tier; }
   }
@@ -14798,12 +14822,11 @@ function showProductEditModal(id) {
     prepTime: '2 ساعة',
     name: {ar:'', en:'', he:''},
     desc: {ar:'', en:'', he:''},
-    sizes: [{label:'كبير', price:50}],
+    sizes: [{label:'كبير', price:50, wholesaleTiers:[]}],
     colors: [{label:'خشبي', hex:'#A3732C'}],
     images: [],
     video: '',
     minOrderQty: null,
-    wholesaleTiers: [],
     companyId: '',
     visible: true
   };
@@ -14869,12 +14892,26 @@ function showProductEditModal(id) {
 
       <div class="panel">
         <h3>الأحجام والأسعار</h3>
+        <p class="note-line" style="margin-bottom:8px">لكل حجم أسعار جملة خاصة به (اختياري) — مثال: من 2 قطعة السعر 5₪ للقطعة، ومن 7 قطع فأكثر السعر 3₪ للقطعة.</p>
         <div id="edit_sizes_wrap">
           ${p.sizes.map((s,i) => `
-            <div class="size-row" data-idx="${i}">
-              <input class="txt-input sz-lbl" value="${s.label}" placeholder="المقاس (مثال: 30 سم)">
-              <input class="txt-input sz-prc" type="number" step="0.01" inputmode="decimal" value="${s.price}" placeholder="السعر بالشيكل (يقبل كسور مثل 1.5)">
-              <button type="button" class="remove-row-btn" data-remove-row>×</button>
+            <div class="size-block panel" data-idx="${i}" style="margin-bottom:12px">
+              <div class="size-row">
+                <input class="txt-input sz-lbl" value="${s.label}" placeholder="المقاس (مثال: 30 سم)">
+                <input class="txt-input sz-prc" type="number" step="0.01" inputmode="decimal" value="${s.price}" placeholder="السعر بالشيكل (يقبل كسور مثل 1.5)">
+                <button type="button" class="remove-row-btn" data-remove-row>×</button>
+              </div>
+              <div class="size-wholesale-wrap" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+                <label class="field-label" style="font-size:.85rem">أسعار الجملة لهذا الحجم تحديداً (اختياري)</label>
+                ${getWholesaleTiers(s, p).map(tr => `
+                  <div class="wh-tier-row" style="display:flex;gap:8px;align-items:center">
+                    <input class="txt-input wh-qty" type="number" step="1" min="1" value="${tr.qty}" placeholder="عدد القطع من">
+                    <input class="txt-input wh-prc" type="number" step="0.01" inputmode="decimal" value="${tr.price}" placeholder="سعر القطعة لهذا الحجم">
+                    <button type="button" class="remove-row-btn" data-remove-row>×</button>
+                  </div>
+                `).join('')}
+                <button type="button" class="add-row-btn" data-add-wh-tier style="align-self:flex-start">+ إضافة شريحة كمية لهذا الحجم</button>
+              </div>
             </div>
           `).join('')}
         </div>
@@ -14936,21 +14973,6 @@ function showProductEditModal(id) {
         <input type="number" class="txt-input" id="edit_min_qty" value="${p.minOrderQty||''}">
       </div>
 
-      <div class="panel">
-        <h3>تدرج أسعار الجملة (كلما زادت الكمية قلّ سعر القطعة)</h3>
-        <p class="note-line" style="margin-bottom:8px">مثال: من 2 قطعة السعر 5₪ للقطعة، ومن 7 قطع فأكثر السعر 3₪ للقطعة.</p>
-        <div id="edit_wholesale_wrap">
-          ${getWholesaleTiers(p).map((tr,i) => `
-            <div class="size-row" data-idx="${i}">
-              <input class="txt-input wh-qty" type="number" step="1" min="1" value="${tr.qty}" placeholder="عدد القطع من">
-              <input class="txt-input wh-prc" type="number" step="0.01" inputmode="decimal" value="${tr.price}" placeholder="سعر القطعة">
-              <button type="button" class="remove-row-btn" data-remove-row>×</button>
-            </div>
-          `).join('')}
-        </div>
-        <button type="button" class="add-row-btn btn-block" id="addWholesaleRowBtn">+ إضافة شريحة كمية جديدة</button>
-      </div>
-
       <div style="display:flex;gap:10px;margin-top:14px">
         <button type="button" class="btn btn-ghost btn-block" id="prodEditCancelBtn">إلغاء</button>
         <button type="submit" class="btn btn-primary btn-block">حفظ التعديلات</button>
@@ -14961,16 +14983,25 @@ function showProductEditModal(id) {
   bindLangFields(form);
   backdrop.classList.add('open');
 
-  // إزالة صف (حجم/لون/شريحة جملة) أو صورة عند الضغط على ×
+  // إزالة صف (حجم كامل مع شرائح جملته/لون/شريحة جملة) أو صورة عند الضغط على ×
   form.addEventListener('click', (e) => {
     const removeBtn = e.target.closest('[data-remove-row]');
     if(removeBtn) {
-      const row = removeBtn.closest('.size-row, .color-row');
+      const row = removeBtn.closest('.size-block, .color-row, .wh-tier-row');
       if(row) row.remove();
     }
     const removeImgBtn = e.target.closest('[data-remove-img]');
     if(removeImgBtn) {
       removeImgBtn.closest('.img-thumb')?.remove();
+    }
+    // إضافة شريحة جملة جديدة لحجم معيّن
+    const addWhBtn = e.target.closest('[data-add-wh-tier]');
+    if(addWhBtn) {
+      const tierRow = document.createElement('div');
+      tierRow.className = 'wh-tier-row';
+      tierRow.style.cssText = 'display:flex;gap:8px;align-items:center';
+      tierRow.innerHTML = `<input class="txt-input wh-qty" type="number" step="1" min="1" placeholder="عدد القطع من"><input class="txt-input wh-prc" type="number" step="0.01" inputmode="decimal" placeholder="سعر القطعة لهذا الحجم"><button type="button" class="remove-row-btn" data-remove-row>×</button>`;
+      addWhBtn.parentElement.insertBefore(tierRow, addWhBtn);
     }
   });
 
@@ -14982,17 +15013,20 @@ function showProductEditModal(id) {
   });
 
   document.getElementById('addSizeRowBtn').addEventListener('click', () => {
-    const row = document.createElement('div');
-    row.className = 'size-row';
-    row.innerHTML = `<input class="txt-input sz-lbl" placeholder="المقاس"><input class="txt-input sz-prc" type="number" step="0.01" inputmode="decimal" placeholder="السعر (يقبل كسور مثل 1.5)"><button type="button" class="remove-row-btn" data-remove-row>×</button>`;
-    document.getElementById('edit_sizes_wrap').appendChild(row);
-  });
-
-  document.getElementById('addWholesaleRowBtn').addEventListener('click', () => {
-    const row = document.createElement('div');
-    row.className = 'size-row';
-    row.innerHTML = `<input class="txt-input wh-qty" type="number" step="1" min="1" placeholder="عدد القطع من"><input class="txt-input wh-prc" type="number" step="0.01" inputmode="decimal" placeholder="سعر القطعة"><button type="button" class="remove-row-btn" data-remove-row>×</button>`;
-    document.getElementById('edit_wholesale_wrap').appendChild(row);
+    const block = document.createElement('div');
+    block.className = 'size-block panel';
+    block.style.marginBottom = '12px';
+    block.innerHTML = `
+      <div class="size-row">
+        <input class="txt-input sz-lbl" placeholder="المقاس">
+        <input class="txt-input sz-prc" type="number" step="0.01" inputmode="decimal" placeholder="السعر (يقبل كسور مثل 1.5)">
+        <button type="button" class="remove-row-btn" data-remove-row>×</button>
+      </div>
+      <div class="size-wholesale-wrap" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <label class="field-label" style="font-size:.85rem">أسعار الجملة لهذا الحجم تحديداً (اختياري)</label>
+        <button type="button" class="add-row-btn" data-add-wh-tier style="align-self:flex-start">+ إضافة شريحة كمية لهذا الحجم</button>
+      </div>`;
+    document.getElementById('edit_sizes_wrap').appendChild(block);
   });
 
   document.getElementById('addColorRowBtn').addEventListener('click', () => {
@@ -15021,10 +15055,18 @@ function showProductEditModal(id) {
     e.preventDefault();
     
     const sizes = [];
-    document.querySelectorAll('#edit_sizes_wrap .size-row').forEach(row => {
-      const lbl = row.querySelector('.sz-lbl').value.trim();
-      const prc = parseFloat(row.querySelector('.sz-prc').value);
-      if(lbl && !isNaN(prc)) sizes.push({label:lbl, price:prc});
+    document.querySelectorAll('#edit_sizes_wrap .size-block').forEach(block => {
+      const lbl = block.querySelector('.sz-lbl').value.trim();
+      const prc = parseFloat(block.querySelector('.sz-prc').value);
+      if(!lbl || isNaN(prc)) return;
+      const tiers = [];
+      block.querySelectorAll('.wh-tier-row').forEach(tr => {
+        const wq = parseInt(tr.querySelector('.wh-qty').value);
+        const wp = parseFloat(tr.querySelector('.wh-prc').value);
+        if(!isNaN(wq) && wq > 0 && !isNaN(wp) && wp >= 0) tiers.push({qty:wq, price:wp});
+      });
+      tiers.sort((a,b) => a.qty - b.qty);
+      sizes.push({label:lbl, price:prc, wholesaleTiers:tiers});
     });
     if(!sizes.length) { toast('يجب إضافة حجم واحد على الأقل!'); return; }
 
@@ -15047,14 +15089,6 @@ function showProductEditModal(id) {
         offer = {oldPrice:oldP, newPrice:newP, until:until||null};
       }
     }
-
-    let wholesaleTiers = [];
-    document.querySelectorAll('#edit_wholesale_wrap .size-row').forEach(row => {
-      const wq = parseInt(row.querySelector('.wh-qty').value);
-      const wp = parseFloat(row.querySelector('.wh-prc').value);
-      if(!isNaN(wq) && wq > 0 && !isNaN(wp) && wp >= 0) wholesaleTiers.push({qty:wq, price:wp});
-    });
-    wholesaleTiers.sort((a,b) => a.qty - b.qty);
 
     const minQty = parseInt(document.getElementById('edit_min_qty').value);
 
@@ -15081,7 +15115,8 @@ function showProductEditModal(id) {
     p.images = images;
     p.offer = offer;
     p.minOrderQty = !isNaN(minQty) && minQty > 0 ? minQty : null;
-    p.wholesaleTiers = wholesaleTiers;
+    // أسعار الجملة أصبحت خاصة بكل حجم على حدة (داخل p.sizes[i].wholesaleTiers)
+    delete p.wholesaleTiers;
     delete p.wholesale;
 
     const idx = PRODUCTS.findIndex(x => x.id === p.id);
@@ -17257,8 +17292,12 @@ function openCompareModal(){
   const pr = (typeof priceRange === 'function') ? priceRange : (p => '');
   const matLbl = (typeof materialLabels === 'function') ? materialLabels : (p => p?.materialId || '');
   const whLbl = (p) => {
-    const tiers = (typeof getWholesaleTiers === 'function') ? getWholesaleTiers(p) : [];
-    return tiers.length ? tiers.map(tr=>`${tr.price} ₪ / ${tr.qty}+`).join('، ') : '—';
+    if(!p || !Array.isArray(p.sizes) || typeof getWholesaleTiers !== 'function') return '—';
+    const parts = p.sizes.map(s => {
+      const tiers = getWholesaleTiers(s, p);
+      return tiers.length ? `${s.label}: ${tiers.map(tr=>`${tr.price}₪/${tr.qty}+`).join('،')}` : null;
+    }).filter(Boolean);
+    return parts.length ? parts.join(' | ') : '—';
   };
   const rows = [
     ['الصورة',
@@ -19360,17 +19399,18 @@ setTimeout(() => {
   }
 
   // 1) مزامنة المنتجات: تحميل أولي + استماع لحظي (onSnapshot) لأي منتج جديد
-  FirebaseCloudStorage.loadSiteData('app_data_products').then(data => {
-    if(data && Array.isArray(data.products) && data.products.length){
-      PRODUCTS = data.products;
+  // كل منتج مخزَّن في مستند مستقل بمجموعة (products) — لا يوجد حد أقصى لعدد المنتجات
+  FirebaseCloudStorage.db.collection('products').get().then(snap => {
+    if(!snap.empty){
+      PRODUCTS = snap.docs.map(d => d.data());
       if(typeof renderGrid === 'function') renderGrid();
     }
     markKnownProducts(PRODUCTS);
 
-    FirebaseCloudStorage.listenSiteData('app_data_products', (liveData) => {
-      if(!liveData || !Array.isArray(liveData.products)) return;
-      const newOnes = liveData.products.filter(p => !knownProductIds.has(p.id));
-      PRODUCTS = liveData.products;
+    FirebaseCloudStorage.db.collection('products').onSnapshot(liveSnap => {
+      const liveProducts = liveSnap.docs.map(d => d.data());
+      const newOnes = liveProducts.filter(p => !knownProductIds.has(p.id));
+      PRODUCTS = liveProducts;
       markKnownProducts(PRODUCTS);
       if(typeof renderGrid === 'function') renderGrid();
       if(typeof applyFilters === 'function') applyFilters();
@@ -19416,9 +19456,9 @@ setTimeout(() => {
   });
 
   // 5) مزامنة المعارض / الشركاء / التقييمات — استماع لحظي
-  FirebaseCloudStorage.listenSiteData('app_data_exhibitions', (liveData) => {
-    if(!liveData || !Array.isArray(liveData.exhibitions)) return;
-    EXHIBITIONS = liveData.exhibitions;
+  // كل معرض/منشور مخزَّن في مستند مستقل بمجموعة (exhibitions) — لا يوجد حد أقصى للعدد
+  FirebaseCloudStorage.db.collection('exhibitions').onSnapshot(liveSnap => {
+    EXHIBITIONS = liveSnap.docs.map(d => d.data());
     if(typeof renderExhibitions === 'function') renderExhibitions();
   });
   FirebaseCloudStorage.listenSiteData('app_data_companies', (liveData) => {
