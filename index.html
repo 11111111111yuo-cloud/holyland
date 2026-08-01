@@ -131,8 +131,50 @@ body{
 }
 
 /* ============================================================
+   BRAND NAME — INTERMITTENT GLOW EFFECT
+   ============================================================ */
+:root{ --brand-glow-color: var(--bronze-light); }
+.brand-glow-name{
+  position:relative;
+  animation:brandGlowFlicker 4.5s ease-in-out infinite;
+}
+@keyframes brandGlowFlicker{
+  0%,100%{
+    text-shadow:0 0 4px rgba(0,0,0,0), 0 0 10px rgba(0,0,0,0);
+  }
+  6%{
+    text-shadow:0 0 6px var(--brand-glow-color), 0 0 16px var(--brand-glow-color), 0 0 26px var(--brand-glow-color);
+  }
+  9%{
+    text-shadow:0 0 2px rgba(0,0,0,0), 0 0 4px rgba(0,0,0,0);
+  }
+  12%{
+    text-shadow:0 0 6px var(--brand-glow-color), 0 0 18px var(--brand-glow-color), 0 0 30px var(--brand-glow-color);
+  }
+  35%{
+    text-shadow:0 0 4px var(--brand-glow-color), 0 0 10px var(--brand-glow-color), 0 0 18px var(--brand-glow-color);
+  }
+  55%{
+    text-shadow:0 0 2px rgba(0,0,0,0), 0 0 4px rgba(0,0,0,0);
+  }
+  60%{
+    text-shadow:0 0 6px var(--brand-glow-color), 0 0 18px var(--brand-glow-color), 0 0 28px var(--brand-glow-color);
+  }
+  80%{
+    text-shadow:0 0 3px var(--brand-glow-color), 0 0 8px var(--brand-glow-color), 0 0 14px var(--brand-glow-color);
+  }
+  90%{
+    text-shadow:0 0 2px rgba(0,0,0,0), 0 0 4px rgba(0,0,0,0);
+  }
+}
+@media (prefers-reduced-motion: reduce){
+  .brand-glow-name{ animation:none; text-shadow:0 0 8px var(--brand-glow-color); }
+}
+
+/* ============================================================
    2. UTILITIES / SIGNATURE MOTIF (engraved divider)
    ============================================================ */
+
 .container{max-width:var(--container);margin:0 auto;padding:0 28px;}
 .eyebrow{
   font-family:var(--font-display);
@@ -5580,7 +5622,7 @@ setTimeout(function() {
     <div class="brand">
       <div class="brand-mark" id="brandMark" data-admin-editable>أم</div>
       <div class="brand-text">
-        <strong id="brandName" data-admin-editable>الأرض المقدسة</strong>
+        <strong id="brandName" class="brand-glow-name" data-admin-editable>الأرض المقدسة</strong>
         <span id="brandTagline" data-admin-editable>للصناعات الحرفية — الخليل</span>
       </div>
     </div>
@@ -8146,7 +8188,8 @@ let SITE_SETTINGS = {
     en:['Precise turnaround measured in hours, not days, with a ready notification','Full customization: text, logo, photo, color, and size','Automatic wholesale pricing for large quantities and corporate occasions'],
     he:['ביצוע מדויק שנמדד בשעות ולא בימים, עם הודעה כשמוכן','התאמה מלאה: טקסט, לוגו, תמונה, צבע וגודל','תמחור סיטונאי אוטומטי לכמויות גדולות ולאירועים עסקיים']
   },
-  aboutImage: ''
+  aboutImage: '',
+  brandGlowColor: '#cd9a4d'
 };
 
 /* ============================================================
@@ -8878,6 +8921,7 @@ function applySiteSettings(){
   }
   
   setText('brandName', L(SITE_SETTINGS.siteName));
+  document.documentElement.style.setProperty('--brand-glow-color', SITE_SETTINGS.brandGlowColor || '#cd9a4d');
   setText('brandTagline', L(SITE_SETTINGS.siteTagline));
   setText('footBrandName', L(SITE_SETTINGS.footerBrandName));
   setText('footAboutText', L(SITE_SETTINGS.footerAbout));
@@ -11506,6 +11550,27 @@ document.addEventListener('DOMContentLoaded', function() {
     const cancelEditBtn = e.target.closest('[data-admin-cancel-company-edit]');
     if(cancelEditBtn) {
       document.getElementById('companyEditBackdrop').classList.remove('open');
+    }
+
+    // Handle admin edit company button
+    const editCompanyBtn = e.target.closest('[data-admin-edit-company]');
+    if(editCompanyBtn) {
+      const companyId = editCompanyBtn.dataset.adminEditCompany;
+      if(typeof showCompanyEditModal === 'function') showCompanyEditModal(companyId);
+    }
+
+    // Handle admin delete company button
+    const deleteCompanyBtn = e.target.closest('[data-admin-delete-company]');
+    if(deleteCompanyBtn) {
+      const companyId = deleteCompanyBtn.dataset.adminDeleteCompany;
+      if(typeof window.deleteCompany === 'function') window.deleteCompany(companyId);
+    }
+
+    // Handle admin toggle company visibility button
+    const toggleCompanyBtn = e.target.closest('[data-admin-toggle-company]');
+    if(toggleCompanyBtn) {
+      const companyId = toggleCompanyBtn.dataset.adminToggleCompany;
+      if(typeof window.toggleCompanyVisibility === 'function') window.toggleCompanyVisibility(companyId);
     }
 
     // Handle admin switch view buttons
@@ -16656,6 +16721,15 @@ function renderSettingsTab() {
           ${langField('site_name', 'اسم المشغل / المتجر باللغات الثلاث', SITE_SETTINGS.siteName)}
           ${langField('site_tagline', 'السطر التوضيحي بالهيدر', SITE_SETTINGS.siteTagline)}
           ${langField('page_title', 'عنوان نافذة المتصفح الرئيسي', SITE_SETTINGS.pageTitle)}
+
+          <div class="field">
+            <label class="field-label">لون توهج اسم المتجر بالهيدر</label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <input type="color" class="txt-input" id="brand_glow_color" value="${SITE_SETTINGS.brandGlowColor || '#cd9a4d'}" style="width:56px;height:38px;padding:2px;cursor:pointer">
+              <span id="brandGlowPreview" class="brand-glow-name" style="font-family:var(--font-head);font-weight:800;font-size:18px;color:${SITE_SETTINGS.brandGlowColor || '#cd9a4d'}">${L(SITE_SETTINGS.siteName)}</span>
+            </div>
+            <p class="note-line" style="margin-top:6px">يتحكم بلون التوهج المتقطّع المتحرك على اسم المتجر في أعلى الموقع</p>
+          </div>
         </div>
       </div>
 
@@ -16777,6 +16851,11 @@ function renderSettingsTab() {
 
   bindLangFields(container);
 
+  document.getElementById('brand_glow_color').addEventListener('input', (e) => {
+    const preview = document.getElementById('brandGlowPreview');
+    if(preview) preview.style.color = e.target.value;
+  });
+
   document.getElementById('logo_uploader').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if(file) {
@@ -16881,6 +16960,7 @@ function renderSettingsTab() {
     SITE_SETTINGS.footerAbout = readLangField(container, 'foot_about');
     SITE_SETTINGS.footerAddress = document.getElementById('foot_addr').value.trim();
     SITE_SETTINGS.footerPhone = document.getElementById('foot_phone').value.trim();
+    SITE_SETTINGS.brandGlowColor = document.getElementById('brand_glow_color').value;
 
     await saveSettings();
     await logActivity('المدير', 'تعديل وحفظ إعدادات الهوية البصرية والفوتر للموقع');
