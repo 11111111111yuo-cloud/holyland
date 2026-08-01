@@ -4514,10 +4514,27 @@ html[dir="ltr"] .partners-track{animation-name:partnersScrollLtr;}
   padding:12px 8px;
   filter:grayscale(1) opacity(.6);
   transition:filter .25s ease, transform .25s ease;
+  border-radius:14px;
+  --partner-glow: var(--bronze-light);
+  animation:partnerGlowFlicker 5.5s ease-in-out infinite;
+  animation-delay:var(--partner-glow-delay, 0s);
 }
 .partner-logo-btn:hover,.partner-logo-btn:focus-visible{
   filter:grayscale(0) opacity(1);
   transform:translateY(-2px);
+}
+@keyframes partnerGlowFlicker{
+  0%,100%{box-shadow:0 0 0 rgba(0,0,0,0);}
+  7%{box-shadow:0 0 16px 2px var(--partner-glow);}
+  13%{box-shadow:0 0 2px rgba(0,0,0,0);}
+  18%{box-shadow:0 0 20px 3px var(--partner-glow);}
+  42%{box-shadow:0 0 10px 1px var(--partner-glow);}
+  58%{box-shadow:0 0 2px rgba(0,0,0,0);}
+  74%{box-shadow:0 0 18px 3px var(--partner-glow);}
+  88%{box-shadow:0 0 2px rgba(0,0,0,0);}
+}
+@media (prefers-reduced-motion: reduce){
+  .partner-logo-btn{animation:none;box-shadow:0 0 10px 1px var(--partner-glow);}
 }
 .partner-logo-btn img{height:34px;max-width:120px;width:auto;object-fit:contain;}
 .partner-logo-fallback{
@@ -7635,8 +7652,8 @@ function renderPartnersTicker(){
   if(!visibleCompanies.length){ section.style.display = 'none'; return; }
   section.style.display = '';
 
-  const logoBtn = (c) => `
-    <button type="button" class="partner-logo-btn" data-company-slug="${c.slug}" aria-label="${L(c.name)}" title="${L(c.name)}">
+  const logoBtn = (c, idx) => `
+    <button type="button" class="partner-logo-btn" data-company-slug="${c.slug}" aria-label="${L(c.name)}" title="${L(c.name)}" style="--partner-glow:${c.glowColor || 'var(--bronze-light)'}; --partner-glow-delay:${(idx % 6) * 0.9}s;">
       ${c.logo
         ? `<img src="${c.logo}" alt="${L(c.name)}" loading="lazy">`
         : `<span class="partner-logo-fallback">${L(c.name)}</span>`}
@@ -16148,6 +16165,7 @@ function renderCompaniesTab() {
             <th>الشعار</th>
             <th>اسم الشركة</th>
             <th>الرابط الصديق (Slug)</th>
+            <th>لون التوهج</th>
             <th>الترتيب</th>
             <th>الحالة</th>
             <th>إجراءات</th>
@@ -16166,6 +16184,9 @@ function renderCompaniesTab() {
               </td>
               <td><b>${L(c.name)}</b></td>
               <td><code>${c.slug}</code></td>
+              <td>
+                <span title="${c.glowColor || '#cd9a4d'}" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:${c.glowColor || '#cd9a4d'};box-shadow:0 0 10px 2px ${c.glowColor || '#cd9a4d'};border:1px solid var(--line)"></span>
+              </td>
               <td><span class="tag">${c.displayOrder}</span></td>
               <td>
                 <span class="status-pill" style="border-color:${c.visible!==false?'var(--olive)':'var(--line)'}; color:${c.visible!==false?'var(--olive-light)':'var(--text-dim)'}">
@@ -16182,7 +16203,7 @@ function renderCompaniesTab() {
                 </div>
               </td>
             </tr>
-          `).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:30px">لا توجد شركات مضافة بعد</td></tr>`}
+          `).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:30px">لا توجد شركات مضافة بعد</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -16334,6 +16355,7 @@ function showCompanyEditModal(id) {
     description: {ar:'', en:'', he:''},
     displayOrder: COMPANIES.length + 1,
     visible: true,
+    glowColor: '#cd9a4d',
     projectCount: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -16405,6 +16427,15 @@ function showCompanyEditModal(id) {
         </div>
       </div>
 
+      <div class="field">
+        <label class="field-label">لون توهج الشركة في قسم "شركاء النجاح"</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input type="color" class="txt-input" id="edit_company_glow_color" value="${company.glowColor || '#cd9a4d'}" style="width:56px;height:38px;padding:2px;cursor:pointer">
+          <span id="companyGlowPreview" style="font-family:var(--font-head);font-weight:800;font-size:13px;color:var(--text-muted);border:1px solid var(--line);border-radius:999px;padding:8px 18px;box-shadow:0 0 16px 2px ${company.glowColor || '#cd9a4d'}">${L(company.name) || 'معاينة'}</span>
+        </div>
+        <p class="note-line" style="margin-top:6px">يحدد لون التوهج المتقطّع خلف شعار/اسم هذه الشركة في الشريط المتحرك بالصفحة الرئيسية</p>
+      </div>
+
       <div class="form-actions" style="margin-top:8px">
         <button type="submit" class="btn btn-primary">${id ? 'حفظ التعديلات' : 'إضافة الشركة'}</button>
         <button type="button" class="btn btn-ghost" data-admin-cancel-company-edit>إلغاء</button>
@@ -16413,6 +16444,20 @@ function showCompanyEditModal(id) {
   `;
 
   backdrop.classList.add('open');
+  bindLangFields(form);
+
+  const glowColorInput = document.getElementById('edit_company_glow_color');
+  if(glowColorInput) {
+    glowColorInput.addEventListener('input', (e) => {
+      const preview = document.getElementById('companyGlowPreview');
+      if(preview) preview.style.boxShadow = `0 0 16px 2px ${e.target.value}`;
+    });
+  }
+
+  const visibleToggle = document.getElementById('companyVisibleToggle');
+  if(visibleToggle) {
+    visibleToggle.addEventListener('click', () => visibleToggle.classList.toggle('on'));
+  }
 
   // Logo upload handler with compression
   const logoUploader = document.getElementById('company_logo_uploader');
@@ -16432,7 +16477,7 @@ function showCompanyEditModal(id) {
   }
 
   // Auto-generate slug from Arabic name
-  const nameArInput = document.getElementById('name_ar');
+  const nameArInput = form.querySelector('[data-lf-wrap="name"] [data-lf-lang-input="ar"]');
   const slugInput = document.getElementById('edit_company_slug');
   if(nameArInput && slugInput && !id) {
     nameArInput.addEventListener('input', () => {
@@ -16444,23 +16489,19 @@ function showCompanyEditModal(id) {
   // Form submission
   document.getElementById('companyEditFormSubmit').addEventListener('submit', async(e) => {
     e.preventDefault();
+
+    await ensureLangFieldTranslated(form, 'name');
+    await ensureLangFieldTranslated(form, 'description');
     
     const updatedCompany = {
       ...company,
-      name: {
-        ar: document.getElementById('name_ar').value,
-        en: document.getElementById('name_en').value,
-        he: document.getElementById('name_he').value
-      },
+      name: readLangField(form, 'name'),
       slug: document.getElementById('edit_company_slug').value,
       logo: document.getElementById('edit_company_logo').value,
-      description: {
-        ar: document.getElementById('description_ar').value,
-        en: document.getElementById('description_en').value,
-        he: document.getElementById('description_he').value
-      },
+      description: readLangField(form, 'description'),
       displayOrder: parseInt(document.getElementById('edit_company_order').value) || 1,
       visible: document.getElementById('companyVisibleToggle').classList.contains('on'),
+      glowColor: document.getElementById('edit_company_glow_color').value,
       updatedAt: new Date().toISOString()
     };
 
