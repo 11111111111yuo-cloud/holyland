@@ -8010,6 +8010,21 @@ function updatePartnerFilterBanner(){
 const STORE_WHATSAPP = '972597217721';
 
 /* ============================================================
+   WHATSAPP LAUNCHER — إرسال الطلب عبر واتساب بشكل موثوق على كل الأجهزة
+   يميّز بين الجوال والحاسوب ويستخدم location.href بدل window.open
+   لتفادي حظر المتصفحات للنوافذ المنبثقة على الهواتف الذكية
+   ============================================================ */
+function sendOrderToWhatsApp(storePhone, message){
+  const cleanPhone = String(storePhone || '').replace(/[^0-9]/g, '');
+  const encodedMessage = encodeURIComponent(message);
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const finalUrl = isMobile
+    ? `whatsapp://send?phone=${cleanPhone}&text=${encodedMessage}`
+    : `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`;
+  window.location.href = finalUrl;
+}
+
+/* ============================================================
    I18N Translate system
    ============================================================ */
 const I18N = {
@@ -10786,8 +10801,7 @@ async function quickOrderViaWhatsapp(p, sel){
     'يرجى تأكيد توفر الطلب، شكراً لكم 🌿'
   ].filter(line => line !== '');
 
-  const text = encodeURIComponent(lines.join('\n'));
-  const link = `https://wa.me/${STORE_WHATSAPP}?text=${text}`;
+  const message = lines.join('\n');
 
   if(typeof logOrder === 'function'){
     try{
@@ -10804,7 +10818,7 @@ async function quickOrderViaWhatsapp(p, sel){
     }catch(err){ console.error('تعذّر تسجيل الطلب السريع:', err); }
   }
 
-  window.open(link, '_blank');
+  sendOrderToWhatsApp(STORE_WHATSAPP, message);
   if(typeof toast === 'function') toast(t('toastOrderPlaced'));
 }
 
@@ -11067,8 +11081,7 @@ async function confirmCheckout(){
     '══════════════════════════════════════',
   ].filter(line => line !== '');
 
-  const text = encodeURIComponent(lines.join('\n'));
-  const link = `https://wa.me/${STORE_WHATSAPP}?text=${text}`;
+  const message = lines.join('\n');
 
   await logOrder(p, sel, pricing, {
     deliveryType: checkoutState.deliveryType,
@@ -11084,7 +11097,7 @@ async function confirmCheckout(){
     customerNotes: checkoutState.customerNotes || ''
   });
 
-  window.open(link, '_blank');
+  sendOrderToWhatsApp(STORE_WHATSAPP, message);
 
   // Show order success modal instead of toast
   OrdersModule.showOrderSuccess(orderNumber);
@@ -13467,11 +13480,9 @@ const OrdersModule = (function() {
      * @param {string} orderNumber - Order number
      */
     contactWhatsApp: function(orderNumber) {
-      const message = encodeURIComponent(
-        `مرحباً،\n\nأرغب في متابعة طلبي.\n\nرقم الطلب:\n#${orderNumber}\n\nشكراً لكم.`
-      );
+      const message = `مرحباً،\n\nأرغب في متابعة طلبي.\n\nرقم الطلب:\n#${orderNumber}\n\nشكراً لكم.`;
       const whatsappNumber = STORE_WHATSAPP || '970599000000';
-      window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank');
+      sendOrderToWhatsApp(whatsappNumber, message);
     },
 
     /**
@@ -15287,9 +15298,9 @@ async function orderPackageViaWhatsapp(promo){
     '',
     'أرغب بطلب هذا الباكج، يرجى التواصل معي لإتمام الطلب.',
   ];
-  const text = encodeURIComponent(lines.join('\n'));
+  const message = lines.join('\n');
   await logPackageOrder(promo, products);
-  window.open(`https://wa.me/${STORE_WHATSAPP}?text=${text}`, '_blank');
+  sendOrderToWhatsApp(STORE_WHATSAPP, message);
 }
 
 function startCountdownTimers() {
