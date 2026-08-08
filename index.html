@@ -1846,8 +1846,7 @@ html[dir="ltr"] .range-val{ text-align:right; }
 .ex-detail-btn{margin-top:auto;padding-top:12px;}
 
 /* map + calendar row */
-.ex-map-cal-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px;}
-@media (max-width:880px){.ex-map-cal-row{grid-template-columns:1fr;}}
+.ex-map-cal-row{display:grid;grid-template-columns:1fr;gap:18px;margin-top:20px;}
 .ex-panel{padding:18px 20px;background:var(--bg-card, #1b1f15);border:1px solid var(--line, rgba(163,115,44,0.22));border-radius:var(--radius, 3px);}
 .ex-panel h3{font-family:var(--font-head, 'Cairo', sans-serif);font-size:14.5px;margin-bottom:12px;color:var(--bronze-light, #cd9a4d);}
 
@@ -6055,11 +6054,6 @@ setTimeout(function() {
   <div class="grid" id="exGrid" style="margin-top:24px"></div>
 
   <div class="ex-map-cal-row">
-    <div class="panel ex-panel">
-      <h3 data-i18n="exMapTitle" data-admin-editable>خريطة حضورنا (دليل بصري توضيحي)</h3>
-      <p class="note-line" data-i18n="exMapNote" data-admin-editable>رسم تقريبي لمواقع المدن التي شاركنا فيها — لأغراض التوضيح البصري وليس للملاحة الدقيقة.</p>
-      <div id="exMapWrap" style="position:relative; overflow:hidden;"></div>
-    </div>
     <div class="panel ex-panel">
       <h3 data-i18n="exCalTitle" data-admin-editable>المعارض القادمة</h3>
       <div id="exCalendar"></div>
@@ -11127,7 +11121,7 @@ function renderExhibitionsSection(){
         
         const media = e.images && e.images.length
           ? `<img src="${e.images[0]}" alt="${L(e.title)}">`
-          : `<svg class="icon" style="width:40px;height:40px;"><use href="#ic-gallery"/></svg>`;
+          : '';
 
         return `
           <article class="ex-card" data-ex-id="${e.id}">
@@ -11275,11 +11269,11 @@ function openExhibitionDetail(id){
 
   document.getElementById('exMainArt').innerHTML = gallery
     ? `<img src="${gallery[Math.min(activeIdx, gallery.length-1)]}" alt="${L(ex.title)}" style="width:100%;height:100%;object-fit:cover">`
-    : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);"><svg class="icon" style="width:60px;height:60px;"><use href="#ic-gallery"/></svg></div>`;
+    : '';
 
   document.getElementById('exThumbs').innerHTML = gallery
     ? gallery.map((src,i)=>`<button class="modal-thumb${i===activeIdx?' active-thumb':''}" data-ex-thumb="${i}" style="padding:0;overflow:hidden"><img src="${src}" style="width:100%;height:100%;object-fit:cover"></button>`).join('')
-    : `<div class="modal-thumb"><svg class="icon" style="width:24px;height:24px"><use href="#ic-gallery"/></svg></div>`;
+    : '';
 
   document.querySelectorAll('[data-ex-thumb]').forEach(b => b.addEventListener('click', () => {
     state.exImgIdx = +b.dataset.exThumb;
@@ -11404,6 +11398,11 @@ function openExhibitionReg(id){
         toast(t('toastFillNamePhone'));
         return;
       }
+
+      // فتح نافذة فارغة فورًا (بشكل متزامن مع نقرة المستخدم) قبل أي await —
+      // مفيدة لمتصفحات الكمبيوتر؛ على الهواتف سيُستخدم التنقل المباشر.
+      const waWindow = window.open('', '_blank');
+
       const reg = {
         id: 'reg_' + Date.now(),
         exhibitionId: ex.id,
@@ -11415,6 +11414,27 @@ function openExhibitionReg(id){
       await logActivity('زائر ' + state.guestId, `سجل لحضور معرض: ${L(ex.title)}`);
       toast(t('exRegSuccess'));
       document.getElementById('exRegBackdrop').classList.remove('open');
+
+      // إرسال رسالة واتساب للمتجر تُعلمه بأن الزبون سيحضر المعرض
+      const waLines = [
+        '✨ تسجيل حضور معرض',
+        '─────────────────────────────────────',
+        `مرحباً، أنا ${name} 🌿`,
+        `يسعدني إعلامكم أنني سأحضر معرضكم القادم بإذن الله!`,
+        '',
+        `📍 المعرض: ${L(ex.title)}`,
+        `🏙️ المدينة: ${L(ex.city)}`,
+        `📅 التاريخ: ${new Date(ex.date).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+        ex.organizer ? `🏢 الجهة المنظمة: ${L(ex.organizer)}` : '',
+        '',
+        `📞 رقم التواصل: ${phone}`,
+        email ? `📧 البريد الإلكتروني: ${email}` : '',
+        '',
+        'أتطلع لرؤيتكم هناك! 🌸',
+      ].filter(line => line !== '');
+      const waText = encodeURIComponent(waLines.join('\n'));
+      const waLink = `https://wa.me/${STORE_WHATSAPP}?text=${waText}`;
+      openWhatsAppLink(waLink, waWindow);
     });
   }
 }
