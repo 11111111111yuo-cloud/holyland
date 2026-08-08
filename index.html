@@ -783,7 +783,7 @@ select.sort-select{
    9. PRODUCT GRID / CARD  (signature: laser-line reveal)
    ============================================================ */
 .grid{
-  display:grid;grid-template-columns:repeat(2,1fr);gap:16px;
+  display:grid;grid-template-columns:repeat(2,1fr);gap:16px;align-items:stretch;
 }
 /* ---- Home page: products grouped by category ---- */
 .category-section{margin-bottom:36px;}
@@ -851,13 +851,18 @@ select.sort-select{
 .card-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:8px;flex:1;}
 .card-sku{font-size:11px;color:var(--text-dim);letter-spacing:.04em;font-family:var(--font-display);}
 .card-name{
-  font-family:'Cairo',var(--font-head);font-weight:700;font-size:15.5px;color:var(--text);
+  font-family:'Cairo',var(--font-head);font-weight:700;font-size:15.5px;line-height:1.3;color:var(--text);
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  min-height:calc(1.3em * 2);
 }
-.card-desc{font-size:12.5px;color:var(--text-muted);min-height:34px;}
+.card-desc{
+  font-size:12.5px;line-height:1.4;color:var(--text-muted);
+  display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;
+  min-height:calc(1.4em * 1);
+}
 .card-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;}
-.card-price-row{display:flex;align-items:baseline;gap:8px;margin-top:6px;}
-.card-price{font-family:'Cairo',var(--font-head);font-weight:800;font-size:18px;color:var(--gold-olive);}
+.card-price-row{display:flex;align-items:baseline;gap:8px;margin-top:auto;padding-top:6px;}
+.card-price{font-family:'Cairo',var(--font-head);font-weight:800;font-size:19px;color:var(--gold-olive);letter-spacing:.01em;}
 .card-price-old{font-size:13px;color:var(--text-dim);text-decoration:line-through;}
 .card-order{
   margin-top:10px;background:var(--olive);color:#fff;
@@ -5508,9 +5513,25 @@ body.app-mode-active .card-order {
 }
 /* إخفاء العناصر الزائدة في وضع التطبيق لبساطة الشاشة */
 body.app-mode-active .hero,
-body.app-mode-active .about,
-body.app-mode-active footer {
+body.app-mode-active .about {
   display: none !important;
+}
+/* تبسيط الفوتر ليعمل بعمود واحد ويبقى ظاهرًا كاملاً في وضع التطبيق
+   (تواصل معنا، روابط سريعة، صندوق تطوير الموقع، وأيقونات التواصل الاجتماعي) */
+body.app-mode-active footer {
+  display: block !important;
+  margin-top: 24px !important;
+}
+body.app-mode-active .foot-grid {
+  grid-template-columns: 1fr !important;
+  gap: 28px !important;
+  padding: 32px 0 20px !important;
+}
+body.app-mode-active .suggestions-panel {
+  padding: 18px !important;
+}
+body.app-mode-active .social-dock {
+  padding: 16px 0 20px !important;
 }
 /* إظهار شريط التنقل السفلي */
 .app-bottom-nav {
@@ -7921,6 +7942,28 @@ function updatePartnerFilterBanner(){
 }
 
 const STORE_WHATSAPP = '972597217721';
+
+// كشف الأجهزة المحمولة — على الهواتف نفتح رابط واتساب بالتنقل المباشر
+// (location.href) بدل نافذة جديدة (window.open)، لأن متصفحات الهواتف
+// (خصوصًا المتصفحات المدمجة داخل تطبيقات مثل فيسبوك/انستغرام أو حتى
+// سفاري/كروم) كثيرًا ما تحجب النوافذ الجديدة حتى مع الانفتاح المتزامن
+// مع نقرة المستخدم. التنقل المباشر هو الطريقة الوحيدة التي تعمل بشكل
+// موثوق على كل متصفحات الهواتف وتُسلّم المستخدم لتطبيق واتساب مباشرة.
+function isMobileDevice(){
+  return /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+function openWhatsAppLink(link, preOpenedWindow){
+  if(isMobileDevice()){
+    if(preOpenedWindow && !preOpenedWindow.closed){
+      try{ preOpenedWindow.close(); }catch(e){}
+    }
+    window.location.href = link;
+  } else if(preOpenedWindow && !preOpenedWindow.closed){
+    preOpenedWindow.location.href = link;
+  } else {
+    window.open(link, '_blank');
+  }
+}
 
 /* ============================================================
    I18N Translate system
@@ -10847,6 +10890,11 @@ async function confirmCheckout(){
     return;
   }
 
+  // فتح نافذة فارغة فورًا وبشكل متزامن مع نقرة المستخدم (قبل أي عملية await) —
+  // مفيدة لمتصفحات الكمبيوتر. على الهواتف سنتجاهلها ونستخدم التنقل المباشر
+  // (location.href) في نهاية الدالة لأنه الأسلوب الوحيد الموثوق هناك.
+  const waWindow = window.open('', '_blank');
+
   const p = state.currentProduct, sel = state.modalSelection;
   const pricing = computePricing(p, sel);
   const shipping = checkoutShippingCost();
@@ -10988,13 +11036,14 @@ async function confirmCheckout(){
     customerNotes: checkoutState.customerNotes || ''
   });
 
-  window.open(link, '_blank');
-
-  // Show order success modal instead of toast
+  // تحديث الواجهة أولاً (قبل التنقل الذي قد يحدث فورًا على الهواتف)
   OrdersModule.showOrderSuccess(orderNumber);
-
   closeCheckoutModal();
   closeProduct();
+
+  // توجيه رابط واتساب: على الهواتف يتم التنقل مباشرة لضمان فتح واتساب،
+  // وعلى الكمبيوتر يفتح في نافذة/تبويب جديد.
+  openWhatsAppLink(link, waWindow);
 }
 
 function renderRelated(p){
@@ -13352,7 +13401,7 @@ const OrdersModule = (function() {
         `مرحباً،\n\nأرغب في متابعة طلبي.\n\nرقم الطلب:\n#${orderNumber}\n\nشكراً لكم.`
       );
       const whatsappNumber = STORE_WHATSAPP || '970599000000';
-      window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank');
+      openWhatsAppLink(`https://wa.me/${whatsappNumber}?text=${message}`);
     },
 
     /**
@@ -15154,6 +15203,10 @@ async function logPackageOrder(promo, products){
 }
 
 async function orderPackageViaWhatsapp(promo){
+  // فتح نافذة فارغة فورًا (بشكل متزامن مع نقرة المستخدم) قبل أي await —
+  // مفيدة لمتصفحات الكمبيوتر (على الهواتف سنستخدم التنقل المباشر أدناه).
+  const waWindow = window.open('', '_blank');
+
   const products = promo.productIds.map(pid => PRODUCTS.find(p => p.id === pid)).filter(Boolean);
   const savings = promo.originalTotal - promo.packagePrice;
   const lines = [
@@ -15170,7 +15223,8 @@ async function orderPackageViaWhatsapp(promo){
   ];
   const text = encodeURIComponent(lines.join('\n'));
   await logPackageOrder(promo, products);
-  window.open(`https://wa.me/${STORE_WHATSAPP}?text=${text}`, '_blank');
+  const link = `https://wa.me/${STORE_WHATSAPP}?text=${text}`;
+  openWhatsAppLink(link, waWindow);
 }
 
 function startCountdownTimers() {
