@@ -10161,8 +10161,8 @@ function renderHomeProducts(productsList){
     const categoryLabel = catDef ? L(catDef.label) : 'أقسام أخرى';
     const categoryIcon = catDef ? catDef.icon : 'ic-stamp';
 
-    // اقتطاع أول 6 منتجات فقط للقسم
-    const limitProducts = categoryProducts.slice(0, 6);
+    // اقتطاع أول 4 منتجات فقط للقسم
+    const limitProducts = categoryProducts.slice(0, 4);
 
     const categorySection = document.createElement('section');
     categorySection.className = 'category-section';
