@@ -10994,7 +10994,6 @@ async function confirmCheckout(){
     '─────────────────────────────────────',
     `اسم المنتج: ${(p.name && p.name.ar) || L(p.name)}`,
     `رقم/كود المنتج: ${p.sku}`,
-    productImage ? `🖼️ صورة المنتج: ${productImage}` : '',
     `الكمية المطلوبة: ${sel.qty}`,
     `لون/نوع الخشب: ${p.colors[sel.color].label}`,
     `الحجم: ${p.sizes[sel.size].label}`,
