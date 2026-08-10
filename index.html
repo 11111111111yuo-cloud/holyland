@@ -8875,8 +8875,20 @@ async function saveProducts(){
   try{
     if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
       const currentIds = new Set(PRODUCTS.map(p=>p.id));
-      // احفظ كل منتج حالي في مستنده الخاص (لا يوجد حد أقصى لعدد المنتجات)
-      await Promise.all(PRODUCTS.map(p => FirebaseCloudStorage.db.collection('products').doc(String(p.id)).set(p)));
+      // نستخدم allSettled بدل all: لو فشل حفظ منتج واحد (مثلاً بسبب تجاوز
+      // حجم صوره لحد الـ 1 ميغابايت في Firestore)، تستمر بقية المنتجات
+      // بالحفظ بشكل طبيعي بدل أن يتعطل الحفظ بالكامل بصمت.
+      const results = await Promise.allSettled(
+        PRODUCTS.map(p => FirebaseCloudStorage.db.collection('products').doc(String(p.id)).set(p))
+      );
+      const failed = results
+        .map((r, i) => ({r, p: PRODUCTS[i]}))
+        .filter(x => x.r.status === 'rejected');
+      if(failed.length){
+        console.error('فشل حفظ بعض المنتجات في Firestore:', failed.map(f => ({sku: f.p.sku, name: L(f.p.name), error: f.r.reason})));
+        const names = failed.map(f => `«${L(f.p.name)}»`).join('، ');
+        toast(`⚠️ تعذّر حفظ ${failed.length} منتج على السيرفر (على الأغلب بسبب كبر حجم الصور): ${names}. يرجى تقليل عدد/جودة صور هذا المنتج وإعادة الحفظ.`);
+      }
       // احذف مستندات المنتجات المحذوفة محلياً
       const removed = [...PRODUCTS_KNOWN_IDS].filter(id => !currentIds.has(id));
       await Promise.all(removed.map(id => FirebaseCloudStorage.db.collection('products').doc(String(id)).delete()));
@@ -15584,6 +15596,17 @@ function showProductEditModal(id) {
     // أسعار الجملة أصبحت خاصة بكل حجم على حدة (داخل p.sizes[i].wholesaleTiers)
     delete p.wholesaleTiers;
     delete p.wholesale;
+
+    // تحقّق من عدم تجاوز حجم مستند المنتج للحد الأقصى المسموح في Firestore (1 ميغابايت).
+    // نترك هامش أمان (900 كيلوبايت) لأن باقي حقول المنتج (الاسم، الوصف، الأسعار...)
+    // تضيف حجمًا إضافيًا بسيطًا فوق حجم الصور نفسها.
+    const estimatedBytes = new Blob([JSON.stringify(p)]).size;
+    const maxSafeBytes = 900 * 1024;
+    if(estimatedBytes > maxSafeBytes){
+      const estimatedKB = Math.round(estimatedBytes / 1024);
+      toast(`⚠️ حجم صور هذا المنتج كبير جدًا (${estimatedKB} كيلوبايت) ولن يُحفظ في قاعدة البيانات — يرجى حذف بعض الصور أو تقليل عددها (الحد الآمن أقل من 900 كيلوبايت) ثم إعادة الحفظ.`);
+      return;
+    }
 
     const idx = PRODUCTS.findIndex(x => x.id === p.id);
     if(idx !== -1) PRODUCTS[idx] = p;
