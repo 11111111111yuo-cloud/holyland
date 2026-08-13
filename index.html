@@ -8406,7 +8406,8 @@ let SITE_SETTINGS = {
     he:['ביצוע מדויק שנמדד בשעות ולא בימים, עם הודעה כשמוכן','התאמה מלאה: טקסט, לוגו, תמונה, צבע וגודל','תמחור סיטונאי אוטומטי לכמויות גדולות ולאירועים עסקיים']
   },
   aboutImage: '',
-  brandGlowColor: '#cd9a4d'
+  brandGlowColor: '#cd9a4d',
+  colorPresets: [] // أوضاع الألوان المحفوظة: [{name, colors:[{label,hex}]}]
 };
 
 /* ============================================================
@@ -14268,38 +14269,112 @@ const AdminModeModule = (function() {
      * Copy product
      */
     copyProduct: function(productId) {
-      logActivity('نسخ منتج', `معرف المنتج: ${productId}`);
-      toast('📋 سيتم نسخ المنتج');
-      // TODO: Implement product copy
+      const original = PRODUCTS.find(p => p.id === productId);
+      if(!original){ toast('تعذّر إيجاد المنتج'); return; }
+      const copy = JSON.parse(JSON.stringify(original));
+      copy.id = 'p_' + Date.now();
+      copy.sku = nextSku(copy.category);
+      PRODUCTS.push(copy);
+      saveProducts();
+      logActivity('نسخ منتج', `نسخة من: ${L(original.name)}`);
+      toast('📋 تم نسخ المنتج بنجاح');
     },
 
     /**
      * Toggle product visibility
      */
     toggleProductVisibility: function(productId) {
-      logActivity('تبديل ظهور المنتج', `معرف المنتج: ${productId}`);
-      toast('👁 تم تبديل ظهور المنتج');
-      // TODO: Implement visibility toggle
+      const p = PRODUCTS.find(x => x.id === productId);
+      if(!p){ toast('تعذّر إيجاد المنتج'); return; }
+      p.visible = (p.visible !== false) ? false : true;
+      saveProducts();
+      logActivity('تبديل ظهور المنتج', `${L(p.name)} أصبح ${p.visible ? 'مرئي' : 'مخفي'}`);
+      toast(p.visible ? '👁 المنتج أصبح مرئيًا' : '🚫 المنتج أصبح مخفيًا');
     },
 
     /**
      * Delete product
      */
     deleteProduct: function(productId) {
+      const p = PRODUCTS.find(x => x.id === productId);
       if (confirm('هل أنت متأكد من حذف هذا المنتج؟')) {
-        logActivity('حذف منتج', `معرف المنتج: ${productId}`);
+        PRODUCTS = PRODUCTS.filter(x => x.id !== productId);
+        saveProducts();
+        logActivity('حذف منتج', p ? L(p.name) : `معرف المنتج: ${productId}`);
         toast('🗑 تم حذف المنتج');
-        // TODO: Implement product deletion
       }
+    },
+
+    /**
+     * Edit section
+     */
+    editSection: function(sectionId) {
+      logActivity('تعديل قسم', `معرف القسم: ${sectionId}`);
+      showSectionEditModal(sectionId);
+    },
+
+    /**
+     * Toggle section visibility
+     */
+    toggleSectionVisibility: function(sectionId) {
+      window.toggleSectionVisibility(sectionId);
+    },
+
+    /**
+     * Move section up in order
+     */
+    moveSectionUp: function(sectionId) {
+      const sorted = SECTIONS.slice().sort((a,b) => (a.order||0) - (b.order||0));
+      const idx = sorted.findIndex(s => s.id === sectionId);
+      if(idx <= 0) return;
+      const tmp = sorted[idx].order;
+      sorted[idx].order = sorted[idx-1].order;
+      sorted[idx-1].order = tmp;
+      saveSections();
+      logActivity('ترتيب الأقسام', `تحريك قسم للأعلى: ${sectionId}`);
+      if(typeof renderSectionsTab === 'function') renderSectionsTab();
+      toast('تم تحريك القسم للأعلى');
+    },
+
+    /**
+     * Move section down in order
+     */
+    moveSectionDown: function(sectionId) {
+      const sorted = SECTIONS.slice().sort((a,b) => (a.order||0) - (b.order||0));
+      const idx = sorted.findIndex(s => s.id === sectionId);
+      if(idx === -1 || idx >= sorted.length - 1) return;
+      const tmp = sorted[idx].order;
+      sorted[idx].order = sorted[idx+1].order;
+      sorted[idx+1].order = tmp;
+      saveSections();
+      logActivity('ترتيب الأقسام', `تحريك قسم للأسفل: ${sectionId}`);
+      if(typeof renderSectionsTab === 'function') renderSectionsTab();
+      toast('تم تحريك القسم للأسفل');
+    },
+
+    /**
+     * Delete section
+     */
+    deleteSection: function(sectionId) {
+      window.deleteSection(sectionId);
     },
 
     /**
      * Edit comment
      */
     editComment: function(button) {
-      logActivity('تعديل تعليق', 'تعديل تعليق');
-      toast('🔧 سيتم فتح نافذة تعديل التعليق');
-      // TODO: Open comment edit modal
+      const card = button.closest('.review-card');
+      const reviewId = card ? card.dataset.reviewId : null;
+      const review = REVIEWS.find(r => r.id === reviewId);
+      if(!review){ toast('تعذّر إيجاد التعليق'); return; }
+      const currentText = (review.text && typeof review.text === 'object') ? (review.text.ar || '') : (review.text || '');
+      const newText = prompt('تعديل نص التعليق:', currentText);
+      if(newText === null) return;
+      if(review.text && typeof review.text === 'object') review.text.ar = newText;
+      else review.text = newText;
+      saveReviews();
+      logActivity('تعديل تعليق', reviewId);
+      toast('✅ تم تعديل التعليق');
     },
 
     /**
@@ -14307,9 +14382,13 @@ const AdminModeModule = (function() {
      */
     deleteComment: function(button) {
       if (confirm('هل أنت متأكد من حذف هذا التعليق؟')) {
-        logActivity('حذف تعليق', 'حذف تعليق');
+        const card = button.closest('.review-card');
+        const reviewId = card ? card.dataset.reviewId : null;
+        REVIEWS = REVIEWS.filter(r => r.id !== reviewId);
+        saveReviews();
+        logActivity('حذف تعليق', reviewId);
         toast('🗑 تم حذف التعليق');
-        button.closest('.review-card').remove();
+        if(card) card.remove();
       }
     },
 
@@ -14317,9 +14396,14 @@ const AdminModeModule = (function() {
      * Approve comment
      */
     approveComment: function(button) {
-      logActivity('موافقة على تعليق', 'موافقة على تعليق');
+      const card = button.closest('.review-card');
+      const reviewId = card ? card.dataset.reviewId : null;
+      const review = REVIEWS.find(r => r.id === reviewId);
+      if(!review){ toast('تعذّر إيجاد التعليق'); return; }
+      review.visible = true;
+      saveReviews();
+      logActivity('موافقة على تعليق', reviewId);
       toast('✅ تمت الموافقة على التعليق');
-      // TODO: Implement comment approval
     },
 
     /**
@@ -15310,8 +15394,9 @@ function showProductEditModal(id) {
         </div>
         <div class="field">
           <label class="field-label">التصنيف</label>
+          <input type="text" class="txt-input" id="edit_cat_search" placeholder="ابحث عن تصنيف..." style="margin-bottom:8px">
           <select class="txt-input" id="edit_cat">
-            ${CATEGORIES.map(c => `<option value="${c.key}" ${c.key===p.category?'selected':''}>${L(c.label)}</option>`).join('')}
+            ${CATEGORIES.map(c => `<option value="${c.key}" data-cat-label="${escapeHtml(L(c.label)).toLowerCase()}" ${c.key===p.category?'selected':''}>${L(c.label)}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -15329,8 +15414,9 @@ function showProductEditModal(id) {
         </div>
         <div class="field">
           <label class="field-label">المناسبة (يمكن اختيار أكثر من مناسبة)</label>
-          <div class="panel" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
-            ${OCCASIONS.map(o => `<label class="checkrow"><input type="checkbox" class="edit-occasion-check" value="${o.id}" ${productOccasionIds(p).includes(o.id)?'checked':''}> ${L(o)}</label>`).join('')}
+          <input type="text" class="txt-input" id="edit_occasion_search" placeholder="ابحث عن مناسبة..." style="margin-bottom:8px">
+          <div class="panel" id="edit_occasion_list" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+            ${OCCASIONS.map(o => `<label class="checkrow" data-occ-label="${escapeHtml(L(o)).toLowerCase()}"><input type="checkbox" class="edit-occasion-check" value="${o.id}" ${productOccasionIds(p).includes(o.id)?'checked':''}> ${L(o)}</label>`).join('')}
           </div>
         </div>
       </div>
@@ -15384,6 +15470,19 @@ function showProductEditModal(id) {
 
       <div class="panel">
         <h3>الألوان والتشطيبات</h3>
+        <div class="form-grid" style="margin-bottom:12px;align-items:end">
+          <div class="field">
+            <label class="field-label">تحميل وضع ألوان محفوظ</label>
+            <select class="txt-input" id="colorPresetLoadSelect">
+              <option value="">— اختر وضعًا محفوظًا —</option>
+              ${(SITE_SETTINGS.colorPresets||[]).map((preset,i) => `<option value="${i}">${escapeHtml(preset.name)} (${preset.colors.length} ألوان)</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="flex:none;display:flex;gap:8px">
+            <button type="button" class="btn btn-ghost" id="loadColorPresetBtn">تحميل</button>
+            <button type="button" class="btn btn-ghost" id="deleteColorPresetBtn" style="color:#c0392b">حذف الوضع</button>
+          </div>
+        </div>
         <div id="edit_colors_wrap">
           ${p.colors.map((c,i) => `
             <div class="color-row" data-idx="${i}">
@@ -15393,7 +15492,10 @@ function showProductEditModal(id) {
             </div>
           `).join('')}
         </div>
-        <button type="button" class="add-row-btn btn-block" id="addColorRowBtn">+ إضافة خيار لوني جديد</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" class="add-row-btn btn-block" id="addColorRowBtn" style="flex:1">+ إضافة خيار لوني جديد</button>
+          <button type="button" class="add-row-btn btn-block" id="saveColorPresetBtn" style="flex:1">💾 احفظ الألوان الحالية كوضع جديد</button>
+        </div>
       </div>
 
       <div class="panel">
@@ -15496,11 +15598,62 @@ function showProductEditModal(id) {
     document.getElementById('edit_sizes_wrap').appendChild(block);
   });
 
-  document.getElementById('addColorRowBtn').addEventListener('click', () => {
+  function addColorRow(label, hex){
     const row = document.createElement('div');
     row.className = 'color-row';
-    row.innerHTML = `<input class="txt-input cl-lbl" placeholder="الاسم"><input class="txt-input cl-hex" type="color" value="#A3732C" style="width:50px;padding:2px"><button type="button" class="remove-row-btn" data-remove-row>×</button>`;
+    row.innerHTML = `<input class="txt-input cl-lbl" placeholder="الاسم" value="${label?escapeHtml(label):''}"><input class="txt-input cl-hex" type="color" value="${hex||'#A3732C'}" style="width:50px;padding:2px"><button type="button" class="remove-row-btn" data-remove-row>×</button>`;
     document.getElementById('edit_colors_wrap').appendChild(row);
+  }
+
+  document.getElementById('addColorRowBtn').addEventListener('click', () => addColorRow());
+
+  // ---- أوضاع الألوان المحفوظة (Color Presets) ----
+  function refreshColorPresetSelect(){
+    const sel = document.getElementById('colorPresetLoadSelect');
+    if(!sel) return;
+    const presets = SITE_SETTINGS.colorPresets || [];
+    sel.innerHTML = `<option value="">— اختر وضعًا محفوظًا —</option>` +
+      presets.map((preset,i) => `<option value="${i}">${escapeHtml(preset.name)} (${preset.colors.length} ألوان)</option>`).join('');
+  }
+
+  document.getElementById('saveColorPresetBtn').addEventListener('click', async () => {
+    const rows = Array.from(document.querySelectorAll('#edit_colors_wrap .color-row'));
+    const colors = rows.map(row => ({
+      label: row.querySelector('.cl-lbl').value.trim(),
+      hex: row.querySelector('.cl-hex').value
+    })).filter(c => c.label);
+    if(!colors.length){ toast('أضف لونًا واحدًا على الأقل قبل الحفظ كوضع'); return; }
+    const name = prompt('اسم الوضع (مثال: ألوان الأخشاب الطبيعية):');
+    if(!name || !name.trim()) return;
+    SITE_SETTINGS.colorPresets = SITE_SETTINGS.colorPresets || [];
+    SITE_SETTINGS.colorPresets.push({ name: name.trim(), colors });
+    await saveSettings();
+    refreshColorPresetSelect();
+    toast(`تم حفظ الوضع «${name.trim()}» (${colors.length} ألوان)`);
+  });
+
+  document.getElementById('loadColorPresetBtn').addEventListener('click', () => {
+    const sel = document.getElementById('colorPresetLoadSelect');
+    const idx = sel.value;
+    if(idx === '') { toast('اختر وضعًا محفوظًا أولاً'); return; }
+    const preset = (SITE_SETTINGS.colorPresets || [])[parseInt(idx)];
+    if(!preset) return;
+    document.getElementById('edit_colors_wrap').innerHTML = '';
+    preset.colors.forEach(c => addColorRow(c.label, c.hex));
+    toast(`تم تحميل وضع «${preset.name}»`);
+  });
+
+  document.getElementById('deleteColorPresetBtn').addEventListener('click', async () => {
+    const sel = document.getElementById('colorPresetLoadSelect');
+    const idx = sel.value;
+    if(idx === '') { toast('اختر وضعًا محفوظًا لحذفه أولاً'); return; }
+    const preset = (SITE_SETTINGS.colorPresets || [])[parseInt(idx)];
+    if(!preset) return;
+    if(!confirm(`حذف الوضع المحفوظ «${preset.name}»؟`)) return;
+    SITE_SETTINGS.colorPresets.splice(parseInt(idx), 1);
+    await saveSettings();
+    refreshColorPresetSelect();
+    toast('تم حذف الوضع المحفوظ');
   });
 
   document.getElementById('edit_image_uploader').addEventListener('change', async (e) => {
@@ -15526,6 +15679,30 @@ function showProductEditModal(id) {
       });
     });
   }
+
+  const occSearchInput = document.getElementById('edit_occasion_search');
+  if(occSearchInput) {
+    occSearchInput.addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      document.querySelectorAll('#edit_occasion_list .checkrow').forEach(row => {
+        const label = row.dataset.occLabel || '';
+        row.style.display = (!q || label.includes(q)) ? '' : 'none';
+      });
+    });
+  }
+
+  const catSearchInput = document.getElementById('edit_cat_search');
+  if(catSearchInput) {
+    catSearchInput.addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      document.querySelectorAll('#edit_cat option').forEach(opt => {
+        const label = opt.dataset.catLabel || '';
+        opt.hidden = !(!q || label.includes(q));
+      });
+    });
+  }
+
+  refreshColorPresetSelect();
 
   document.getElementById('prodEditCancelBtn').addEventListener('click', () => backdrop.classList.remove('open'));
 
