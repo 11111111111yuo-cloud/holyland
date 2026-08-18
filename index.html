@@ -1035,14 +1035,14 @@ input[type=text].txt-input:focus, textarea.txt-input:focus{
 /* ---- Product modal: precise mobile spec (ID selectors always win, regardless of source order) ---- */
 @media (max-width:600px){
   #modalBox{
-    width:95%;max-width:420px;max-height:88vh;
+    width:98%;max-width:98%;max-height:94vh;
     overflow-y:auto;-webkit-overflow-scrolling:touch;
   }
   #modalClose{
     top:10px;left:10px;width:38px;height:38px;min-height:38px;min-width:38px;
   }
   #modalMainArt{
-    aspect-ratio:1/1;width:100%;max-width:280px;max-height:280px;
+    aspect-ratio:1/1;width:100%;max-width:420px;max-height:420px;
     margin:0 auto;padding:12px;
   }
   #modalMainArt img, #modalMainArt svg{
@@ -1060,6 +1060,15 @@ input[type=text].txt-input:focus, textarea.txt-input:focus{
     max-width:300px;max-height:300px;margin:0 auto;
   }
   #modalInfo{padding:16px 18px;gap:14px;}
+}
+
+/* ---- نافذة تفاصيل المنتج: أقصى عرض ممكن للشاشة (كمبيوتر/تابلت) ---- */
+@media (min-width:601px){
+  #modalBox{
+    width:96vw;
+    max-width:1600px;
+    max-height:92vh;
+  }
 }
 
 /* ============================================================
@@ -3340,6 +3349,15 @@ body.admin-mode .admin-front-toolbar {
 .admin-edit-modal{
   width:700px;
   max-width:95vw;
+}
+/* نافذة "إضافة/تعديل منتج" فقط: تُعرض بأقصى عرض ممكن على شاشات سطح
+   المكتب بدل العرض الثابت الضيق (700px) المستخدم لبقية النوافذ المنبثقة
+   الإدارية (التصنيفات، المعارض)، دون التأثير على استجابتها على الجوال. */
+@media (min-width:881px){
+  #prodEditBackdrop .admin-edit-modal{
+    width:96vw;
+    max-width:1900px;
+  }
 }
 .admin-edit-modal .section-title{
   font-size:20px;
@@ -8594,32 +8612,10 @@ let USERS = [
   }
 ];
 
-function hasPermission(user, permission) {
-  if(!user || !user.role) return false;
-  const userPermissions = ROLE_PERMISSIONS[user.role] || [];
-  return userPermissions.includes(permission);
-}
-
-function hasAnyPermission(user, permissions) {
-  if(!user || !user.role) return false;
-  const userPermissions = ROLE_PERMISSIONS[user.role] || [];
-  return permissions.some(p => userPermissions.includes(p));
-}
-
-function canAccessTab(user, tabKey) {
-  const tabPermissions = {
-    'overview': [PERMISSIONS.ACTIVITY_VIEW],
-    'products': [PERMISSIONS.PRODUCTS_VIEW],
-    'orders': [PERMISSIONS.ORDERS_VIEW],
-    'exhibitions': [PERMISSIONS.EXHIBITIONS_VIEW],
-    'sections': [PERMISSIONS.SECTIONS_VIEW],
-    'users': [PERMISSIONS.USERS_VIEW],
-    'activity': [PERMISSIONS.ACTIVITY_VIEW],
-    'settings': [PERMISSIONS.SETTINGS_VIEW]
-  };
-  const required = tabPermissions[tabKey] || [];
-  return hasAnyPermission(user, required);
-}
+// ملاحظة: كان يوجد هنا سابقاً تعريف مكرر ومتضارب لـ hasPermission/canAccessTab
+// (يستخدم ROLE_PERMISSIONS مباشرة) بينما التعريف الفعلي المُستخدَم في لوحة التحكم
+// موجود لاحقاً في الملف ويعتمد على خريطة صلاحيات صريحة (permissionMap).
+// أُزيل التعريف المكرر هنا لتوحيد مصدر الحقيقة الوحيد لصلاحيات المدير.
 
 const CITY_MAP_COORDS = {
   'الخليل':{x:120,y:270}, 'hebron':{x:120,y:270}, 'חברון':{x:120,y:270},
@@ -8873,6 +8869,10 @@ async function initProducts(){
   }catch(e){ console.error('تعذّر تحميل المنتجات من Firestore:', e); }
 }
 async function saveProducts(){
+  // القيمة المُعادة تعكس بصدق نجاح الحفظ في قاعدة البيانات (وليس فقط التحديث المحلي)،
+  // حتى تستطيع الدوال المستدعية (حذف/إخفاء منتج) معرفة إن كانت العملية نجحت فعلاً
+  // قبل إخبار المدير بنجاحها.
+  let success = true;
   try{
     if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
       const currentIds = new Set(PRODUCTS.map(p=>p.id));
@@ -8886,19 +8886,40 @@ async function saveProducts(){
         .map((r, i) => ({r, p: PRODUCTS[i]}))
         .filter(x => x.r.status === 'rejected');
       if(failed.length){
+        success = false;
         console.error('فشل حفظ بعض المنتجات في Firestore:', failed.map(f => ({sku: f.p.sku, name: L(f.p.name), error: f.r.reason})));
         const names = failed.map(f => `«${L(f.p.name)}»`).join('، ');
         toast(`⚠️ تعذّر حفظ ${failed.length} منتج على السيرفر (على الأغلب بسبب كبر حجم الصور): ${names}. يرجى تقليل عدد/جودة صور هذا المنتج وإعادة الحفظ.`);
       }
-      // احذف مستندات المنتجات المحذوفة محلياً
+      // احذف مستندات المنتجات المحذوفة محلياً — نتتبّع كل عملية حذف على حدة
+      // حتى لا نفقد تتبّع منتج فشل حذف مستنده فعلياً (كان الكود القديم يعتبر
+      // كل عمليات الحذف ناجحة بشكل أعمى).
       const removed = [...PRODUCTS_KNOWN_IDS].filter(id => !currentIds.has(id));
-      await Promise.all(removed.map(id => FirebaseCloudStorage.db.collection('products').doc(String(id)).delete()));
-      PRODUCTS_KNOWN_IDS = currentIds;
+      if(removed.length){
+        const delResults = await Promise.allSettled(
+          removed.map(id => FirebaseCloudStorage.db.collection('products').doc(String(id)).delete())
+        );
+        delResults.forEach((r, i) => {
+          if(r.status === 'rejected'){
+            success = false;
+            console.error('فشل حذف مستند منتج من Firestore:', removed[i], r.reason);
+          } else {
+            PRODUCTS_KNOWN_IDS.delete(removed[i]);
+          }
+        });
+      }
+      results.forEach((r, i) => {
+        if(r.status !== 'rejected') PRODUCTS_KNOWN_IDS.add(PRODUCTS[i].id);
+      });
     }
-  }catch(e){ console.error('Firebase save error:', e); }
+  }catch(e){
+    console.error('Firebase save error:', e);
+    success = false;
+  }
   // Update UI immediately after save
   if(typeof renderProducts === 'function') renderProducts();
   if(typeof renderGrid === 'function') renderGrid();
+  return success;
 }
 let ORDERS_CACHE = [];
 async function getOrders(){
@@ -9059,18 +9080,46 @@ async function initExhibitions(){
   }catch(e){ console.error('تعذّر تحميل المعارض من Firestore:', e); }
 }
 async function saveExhibitions(){
+  // نعيد true/false لتعكس نجاح الحفظ الفعلي في قاعدة البيانات، حتى تعرف
+  // دوال الحذف/التثبيت إن كانت العملية نجحت فعلاً قبل إخبار المدير بنجاحها.
+  let success = true;
   try{
     if(typeof FirebaseCloudStorage !== 'undefined' && FirebaseCloudStorage.db){
       const currentIds = new Set(EXHIBITIONS.map(x=>x.id));
-      await Promise.all(EXHIBITIONS.map(x => FirebaseCloudStorage.db.collection('exhibitions').doc(String(x.id)).set(x)));
+      const results = await Promise.allSettled(
+        EXHIBITIONS.map(x => FirebaseCloudStorage.db.collection('exhibitions').doc(String(x.id)).set(x))
+      );
+      results.forEach((r, i) => {
+        if(r.status === 'rejected'){
+          success = false;
+          console.error('فشل حفظ معرض في Firestore:', EXHIBITIONS[i] && EXHIBITIONS[i].id, r.reason);
+        } else {
+          EXHIBITIONS_KNOWN_IDS.add(EXHIBITIONS[i].id);
+        }
+      });
       const removed = [...EXHIBITIONS_KNOWN_IDS].filter(id => !currentIds.has(id));
-      await Promise.all(removed.map(id => FirebaseCloudStorage.db.collection('exhibitions').doc(String(id)).delete()));
-      EXHIBITIONS_KNOWN_IDS = currentIds;
+      if(removed.length){
+        const delResults = await Promise.allSettled(
+          removed.map(id => FirebaseCloudStorage.db.collection('exhibitions').doc(String(id)).delete())
+        );
+        delResults.forEach((r, i) => {
+          if(r.status === 'rejected'){
+            success = false;
+            console.error('فشل حذف مستند معرض من Firestore:', removed[i], r.reason);
+          } else {
+            EXHIBITIONS_KNOWN_IDS.delete(removed[i]);
+          }
+        });
+      }
     }
-  }catch(e){ console.error('Firebase save error:', e); }
+  }catch(e){
+    console.error('Firebase save error:', e);
+    success = false;
+  }
   // Update UI immediately after save
   if(typeof renderExhibitions === 'function') renderExhibitions();
   if(typeof renderExhibitionStats === 'function') renderExhibitionStats();
+  return success;
 }
 async function getExhibitionRegistrations(){
   try{ const r = await storage.get('hl_exhibition_regs_v1', true); const v = JSON.parse(r.value); return Array.isArray(v)?v:[]; }
@@ -10120,6 +10169,14 @@ function bindProductCardEvents(container){
       openProduct(btn.dataset.order);
     });
   });
+
+  // إعادة إرفاق أزرار إدارة المنتج (تعديل/نسخ/إخفاء/حذف) فوق البطاقات بعد كل
+  // إعادة رسم للشبكة (بحث/فلترة/تفضيل/تحديث بيانات)، لأنها كانت تُربط مرة
+  // واحدة فقط عند تسجيل الدخول وتُفقَد عند أي renderGrid/renderHomeProducts لاحق.
+  if(typeof isAdminLoggedIn === 'function' && isAdminLoggedIn()
+     && typeof AdminModeModule !== 'undefined' && typeof AdminModeModule.attachProductCardControls === 'function'){
+    AdminModeModule.attachProductCardControls(container);
+  }
 }
 
 // هل نحن في حالة التصفّح الافتراضية (بلا بحث/فلاتر/تصنيف محدد)؟ في هذه الحالة نعرض المنتجات مجمّعة حسب القسم
@@ -10563,18 +10620,20 @@ function attachModalListeners(){
 
     const adminDeleteProductBtn = document.getElementById('adminDeleteProductBtn');
     if(adminDeleteProductBtn) {
-      adminDeleteProductBtn.addEventListener('click', () => {
-        if(confirm('هل أنت متأكد من حذف هذا المنتج؟')) {
-          closeProduct();
-          deleteProduct(p.id);
-        }
+      adminDeleteProductBtn.addEventListener('click', async () => {
+        // التأكيد ورسائل النجاح/الفشل أصبحت داخل deleteProduct نفسها الآن،
+        // لذا لا نكرر نافذة التأكيد هنا، ونغلق نافذة المنتج فقط بعد أن
+        // نعرف أن الحذف تم فعلياً (بدل إغلاقها قبل معرفة النتيجة).
+        const id = p.id;
+        await deleteProduct(id);
+        if(!PRODUCTS.some(x => idsEqual(x.id, id))) closeProduct();
       });
     }
 
     const adminToggleVisibilityBtn = document.getElementById('adminToggleVisibilityBtn');
     if(adminToggleVisibilityBtn) {
-      adminToggleVisibilityBtn.addEventListener('click', () => {
-        toggleProductVisibility(p.id);
+      adminToggleVisibilityBtn.addEventListener('click', async () => {
+        await toggleProductVisibility(p.id);
         closeProduct();
       });
     }
@@ -12731,9 +12790,8 @@ function updateProductCardsForAdmin() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const productId = btn.dataset.p;
-      if(confirm('هل أنت متأكد من حذف هذا المنتج؟')) {
-        deleteProduct(productId);
-      }
+      // التأكيد أصبح داخل deleteProduct نفسها الآن، فلا داعي لتكراره هنا.
+      deleteProduct(productId);
     });
   });
   
@@ -12842,6 +12900,29 @@ function isAdminLoggedIn() {
   } catch (e) {
     return false;
   }
+}
+
+// مقارنة آمنة لمعرّفات المنتجات/العناصر بغض النظر عن نوعها (نص أو رقم)،
+// لأن المعرّفات القادمة من data-* في الـ DOM تكون دائماً نصوصاً، بينما بعض
+// المعرّفات المُخزَّنة قد تكون من نوع مختلف. المقارنة الصارمة (===) بينهما
+// تفشل دائماً بصمت دون أي خطأ ظاهر، فهذا يمنع ذلك.
+function idsEqual(a, b){
+  return String(a) === String(b);
+}
+
+// تحقق موحّد من صلاحيات المدير قبل تنفيذ أي عملية حساسة (حذف/إخفاء/إلخ).
+// يُظهر رسالة واضحة للمدير عند الرفض بدل الفشل الصامت.
+function requireAdminPermission(permission){
+  if(!isAdminLoggedIn()){
+    if(typeof toast === 'function') toast('⚠️ يجب تسجيل الدخول كمدير لتنفيذ هذه العملية');
+    return false;
+  }
+  const user = getCurrentUser();
+  if(!user || !hasPermission(user, permission)){
+    if(typeof toast === 'function') toast('⛔ ليست لديك صلاحية كافية لتنفيذ هذه العملية');
+    return false;
+  }
+  return true;
 }
 
 function getCurrentUser() {
@@ -13869,12 +13950,19 @@ const AdminModeModule = (function() {
     }, 100);
   }
 
-  function initializeProductAdminControls() {
+  function initializeProductAdminControls(root) {
     // Add admin controls to product cards
-    const productCards = document.querySelectorAll('.card');
+    // ملاحظة إصلاح مهمة: كانت هذه الدالة تقرأ المعرّف من card.dataset.order
+    // أو card.dataset.p، لكن بطاقة المنتج (article.card) لا تحمل أياً من
+    // هاتين الخاصيتين إطلاقاً — فقط data-id. لذلك كانت productId دائماً
+    // undefined وكانت أزرار الإدارة لا تُضاف أبداً فوق البطاقات، وهذا هو
+    // السبب الحقيقي وراء عدم وجود/استجابة أزرار الحذف/الإخفاء في الصفحة
+    // الرئيسية أثناء وضع المدير.
+    const scope = root || document;
+    const productCards = scope.querySelectorAll('.card');
     productCards.forEach(card => {
       if (!card.querySelector('.product-admin-controls')) {
-        const productId = card.dataset.order || card.dataset.p;
+        const productId = card.dataset.id;
         if (productId) {
           const controls = document.createElement('div');
           controls.className = 'product-admin-controls';
@@ -13894,9 +13982,14 @@ const AdminModeModule = (function() {
           `;
           
           // Add event listeners to the buttons
+          // كل معالج يستدعي stopPropagation أولاً لمنع تصادم الحدث مع مستمع
+          // النقر على البطاقة نفسها (الذي يفتح نافذة تفاصيل المنتج)، فكان
+          // الضغط على زر الحذف/الإخفاء يفتح نافذة المنتج بالتزامن مع تنفيذ
+          // العملية.
           const editBtn = controls.querySelector('[data-admin-edit-product]');
           if(editBtn) {
-            editBtn.addEventListener('click', () => {
+            editBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
               if(typeof AdminModeModule === 'object' && typeof AdminModeModule.editProduct === 'function') {
                 AdminModeModule.editProduct(productId);
               }
@@ -13905,7 +13998,8 @@ const AdminModeModule = (function() {
           
           const copyBtn = controls.querySelector('[data-admin-copy-product]');
           if(copyBtn) {
-            copyBtn.addEventListener('click', () => {
+            copyBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
               if(typeof AdminModeModule === 'object' && typeof AdminModeModule.copyProduct === 'function') {
                 AdminModeModule.copyProduct(productId);
               }
@@ -13914,7 +14008,8 @@ const AdminModeModule = (function() {
           
           const toggleBtn = controls.querySelector('[data-admin-toggle-product]');
           if(toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
+            toggleBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
               if(typeof AdminModeModule === 'object' && typeof AdminModeModule.toggleProductVisibility === 'function') {
                 AdminModeModule.toggleProductVisibility(productId);
               }
@@ -13923,7 +14018,8 @@ const AdminModeModule = (function() {
           
           const deleteBtn = controls.querySelector('[data-admin-delete-product]');
           if(deleteBtn) {
-            deleteBtn.addEventListener('click', () => {
+            deleteBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
               if(typeof AdminModeModule === 'object' && typeof AdminModeModule.deleteProduct === 'function') {
                 AdminModeModule.deleteProduct(productId);
               }
@@ -14269,7 +14365,8 @@ const AdminModeModule = (function() {
      * Copy product
      */
     copyProduct: function(productId) {
-      const original = PRODUCTS.find(p => p.id === productId);
+      if(!requireAdminPermission('edit_products')) return;
+      const original = PRODUCTS.find(p => idsEqual(p.id, productId));
       if(!original){ toast('تعذّر إيجاد المنتج'); return; }
       const copy = JSON.parse(JSON.stringify(original));
       copy.id = 'p_' + Date.now();
@@ -14282,27 +14379,28 @@ const AdminModeModule = (function() {
 
     /**
      * Toggle product visibility
+     * (موحّدة الآن مع window.toggleProductVisibility بدل منطق مكرر بلا
+     * تحقق من الصلاحيات ولا معالجة لفشل الحفظ)
      */
     toggleProductVisibility: function(productId) {
-      const p = PRODUCTS.find(x => x.id === productId);
-      if(!p){ toast('تعذّر إيجاد المنتج'); return; }
-      p.visible = (p.visible !== false) ? false : true;
-      saveProducts();
-      logActivity('تبديل ظهور المنتج', `${L(p.name)} أصبح ${p.visible ? 'مرئي' : 'مخفي'}`);
-      toast(p.visible ? '👁 المنتج أصبح مرئيًا' : '🚫 المنتج أصبح مخفيًا');
+      window.toggleProductVisibility(productId);
     },
 
     /**
      * Delete product
+     * (موحّدة الآن مع window.deleteProduct بدل منطق مكرر بلا تحقق من
+     * الصلاحيات ولا معالجة لفشل الحفظ)
      */
     deleteProduct: function(productId) {
-      const p = PRODUCTS.find(x => x.id === productId);
-      if (confirm('هل أنت متأكد من حذف هذا المنتج؟')) {
-        PRODUCTS = PRODUCTS.filter(x => x.id !== productId);
-        saveProducts();
-        logActivity('حذف منتج', p ? L(p.name) : `معرف المنتج: ${productId}`);
-        toast('🗑 تم حذف المنتج');
-      }
+      window.deleteProduct(productId);
+    },
+
+    /**
+     * إعادة إرفاق أزرار إدارة المنتج فوق البطاقات ضمن نطاق معيّن (أو
+     * المستند بالكامل افتراضياً). تُستدعى بعد كل إعادة رسم لشبكة المنتجات.
+     */
+    attachProductCardControls: function(root) {
+      initializeProductAdminControls(root);
     },
 
     /**
@@ -14791,24 +14889,58 @@ function renderProductsTab() {
 }
 
 window.editProduct = function(id) { showProductEditModal(id); }
+
 window.deleteProduct = async function(id) {
-  PRODUCTS = PRODUCTS.filter(p => p.id !== id);
-  await saveProducts();
-  await logActivity('المدير', `حذف منتج برقم معرف: ${id}`);
-  renderProductsTab();
-  renderGrid();
-  toast('تم حذف المنتج بنجاح');
-}
-window.toggleProductVisibility = async function(id) {
-  const p = PRODUCTS.find(x => x.id === id);
-  if(p) {
-    p.visible = (p.visible !== false) ? false : true;
-    await saveProducts();
-    await logActivity('المدير', `غير حالة ظهور المنتج ${L(p.name)} إلى ${p.visible ? 'مرئي' : 'مخفي'}`);
+  if(!requireAdminPermission('delete_products')) return;
+
+  const product = PRODUCTS.find(p => idsEqual(p.id, id));
+  if(!product){ toast('⚠️ تعذّر إيجاد المنتج المطلوب'); return; }
+
+  if(!confirm('هل أنت متأكد أنك تريد حذف هذا المنتج؟ لا يمكن التراجع عن هذه العملية.')) return;
+
+  // نحتفظ بنسخة من القائمة الحالية للتراجع محلياً إن فشل الحفظ الفعلي في قاعدة البيانات
+  const previousProducts = PRODUCTS;
+  PRODUCTS = PRODUCTS.filter(p => !idsEqual(p.id, id));
+
+  const ok = await saveProducts();
+  if(!ok){
+    PRODUCTS = previousProducts;
     renderProductsTab();
     renderGrid();
+    toast('❌ فشل حذف المنتج — تعذّر الاتصال بقاعدة البيانات. حاول مرة أخرى.');
+    return;
   }
+
+  await logActivity('المدير', `حذف منتج: ${L(product.name)} (${product.sku || id})`);
+  renderProductsTab();
+  renderGrid();
+  toast('✅ تم حذف المنتج بنجاح');
 }
+
+window.toggleProductVisibility = async function(id) {
+  if(!requireAdminPermission('edit_products')) return;
+
+  const p = PRODUCTS.find(x => idsEqual(x.id, id));
+  if(!p){ toast('⚠️ تعذّر إيجاد المنتج المطلوب'); return; }
+
+  const previousVisible = p.visible;
+  p.visible = (p.visible !== false) ? false : true;
+
+  const ok = await saveProducts();
+  if(!ok){
+    p.visible = previousVisible;
+    renderProductsTab();
+    renderGrid();
+    toast('❌ فشل تغيير حالة ظهور المنتج — تعذّر الاتصال بقاعدة البيانات.');
+    return;
+  }
+
+  await logActivity('المدير', `غير حالة ظهور المنتج ${L(p.name)} إلى ${p.visible ? 'مرئي' : 'مخفي'}`);
+  renderProductsTab();
+  renderGrid();
+  toast(p.visible ? '👁 المنتج أصبح مرئيًا' : '🚫 المنتج أصبح مخفيًا');
+}
+
 
 function renderPromotionsTab() {
   const container = document.getElementById('tab-promotions');
@@ -16007,24 +16139,57 @@ function renderExhibitionsTab() {
 }
 
 window.editExhibition = function(id) { showExhibitionEditModal(id); }
+
 window.deleteExhibition = async function(id) {
-  EXHIBITIONS = EXHIBITIONS.filter(e => e.id !== id);
-  await saveExhibitions();
-  await logActivity('المدير', `حذف معرض: ${id}`);
-  renderExhibitionsTab();
-  renderExhibitionsSection();
-  toast('تم حذف المعرض بنجاح');
-}
-window.toggleExhibitionPin = async function(id) {
-  const ex = EXHIBITIONS.find(e => e.id === id);
-  if(ex) {
-    ex.pinned = !ex.pinned;
-    await saveExhibitions();
-    await logActivity('المدير', `${ex.pinned?'ثبت':'ألغى تثبيت'} المعرض ${L(ex.title)}`);
+  if(!requireAdminPermission('manage_exhibitions')) return;
+
+  const ex = EXHIBITIONS.find(e => idsEqual(e.id, id));
+  if(!ex){ toast('⚠️ تعذّر إيجاد المنشور المطلوب'); return; }
+
+  if(!confirm('هل أنت متأكد أنك تريد حذف هذا المنشور؟ لا يمكن التراجع عن هذه العملية.')) return;
+
+  const previousExhibitions = EXHIBITIONS;
+  EXHIBITIONS = EXHIBITIONS.filter(e => !idsEqual(e.id, id));
+
+  const ok = await saveExhibitions();
+  if(!ok){
+    EXHIBITIONS = previousExhibitions;
     renderExhibitionsTab();
     renderExhibitionsSection();
+    toast('❌ فشل حذف المنشور — تعذّر الاتصال بقاعدة البيانات. حاول مرة أخرى.');
+    return;
   }
+
+  await logActivity('المدير', `حذف معرض: ${L(ex.title)}`);
+  renderExhibitionsTab();
+  renderExhibitionsSection();
+  toast('✅ تم حذف المنشور بنجاح');
 }
+
+window.toggleExhibitionPin = async function(id) {
+  if(!requireAdminPermission('manage_exhibitions')) return;
+
+  const ex = EXHIBITIONS.find(e => idsEqual(e.id, id));
+  if(!ex){ toast('⚠️ تعذّر إيجاد المنشور المطلوب'); return; }
+
+  const previousPinned = ex.pinned;
+  ex.pinned = !ex.pinned;
+
+  const ok = await saveExhibitions();
+  if(!ok){
+    ex.pinned = previousPinned;
+    renderExhibitionsTab();
+    renderExhibitionsSection();
+    toast('❌ فشل تحديث حالة تثبيت المنشور — تعذّر الاتصال بقاعدة البيانات.');
+    return;
+  }
+
+  await logActivity('المدير', `${ex.pinned?'ثبت':'ألغى تثبيت'} المعرض ${L(ex.title)}`);
+  renderExhibitionsTab();
+  renderExhibitionsSection();
+  toast(ex.pinned ? '📌 تم تثبيت المنشور' : 'تم إلغاء تثبيت المنشور');
+}
+
 
 function showExhibitionEditModal(id) {
   const ex = EXHIBITIONS.find(e => e.id === id) || {
