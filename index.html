@@ -751,14 +751,43 @@ header.site-header{
 /* ============================================================
    7. CATEGORY CHIPS
    ============================================================ */
-.cat-row{display:flex;gap:12px;overflow-x:auto;justify-content:center;padding-bottom:6px;scrollbar-width:none;}
+.cat-row-wrap{position:relative;display:flex;align-items:center;gap:8px;}
+.cat-row{
+  display:flex;gap:12px;overflow-x:auto;justify-content:flex-start;padding-bottom:6px;
+  scrollbar-width:none;scroll-behavior:smooth;
+  scroll-snap-type:x proximity;
+  cursor:grab;
+  -webkit-overflow-scrolling:touch;
+  flex:1;min-width:0;
+}
+.cat-row.dragging{cursor:grabbing;scroll-snap-type:none;user-select:none;}
 .cat-row::-webkit-scrollbar{display:none;}
+.cat-row-wrap.has-overflow .cat-row{
+  mask-image:linear-gradient(to left, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+  -webkit-mask-image:linear-gradient(to left, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+}
+.cat-nav-btn{
+  flex:none;display:flex;align-items:center;justify-content:center;
+  width:38px;height:38px;border-radius:50%;
+  background:var(--bg-card);border:1px solid var(--line);
+  color:var(--text);transition:border-color .2s ease, background .2s ease, opacity .2s ease, transform .15s ease;
+  z-index:2;
+}
+.cat-nav-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.cat-nav-btn:hover{border-color:var(--olive);background:var(--bg-hover);}
+.cat-nav-btn:active{transform:scale(.92);}
+.cat-nav-btn:disabled{opacity:.3;cursor:default;pointer-events:none;}
+.cat-row-wrap:not(.has-overflow) .cat-nav-btn{display:none;}
+@media (max-width:640px){
+  .cat-nav-btn{display:none !important;}
+}
 .cat-chip{
   flex:none;display:flex;align-items:center;gap:10px;
   background:var(--bg-card);border:1px solid var(--line);
   padding:12px 18px;border-radius:var(--radius);
   font-family:var(--font-head);font-weight:600;font-size:14px;
   transition:border-color .2s ease, transform .2s ease;
+  scroll-snap-align:start;
 }
 .cat-chip:hover{border-color:var(--olive);transform:translateY(-2px);}
 .cat-chip.active{background:var(--olive);border-color:var(--olive);color:#fff;}
@@ -926,7 +955,60 @@ select.sort-select{
 }
 .modal-close:hover{background:rgba(0,0,0,.6);transform:scale(1.1);}
 .modal-gallery{position:relative;background:var(--bg-card);display:flex;flex-direction:column;min-height:400px;}
-.modal-gallery-main{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;padding:20px;}
+.modal-gallery-main{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;padding:20px;position:relative;overflow:hidden;}
+
+/* ============================================================
+   PRODUCT IMAGE SLIDESHOW — Premium crossfade (auto, 2+ images only)
+   ============================================================ */
+.pm-slideshow{position:relative;width:100%;height:100%;}
+.pm-slide{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+  opacity:0;transition:opacity 1s cubic-bezier(.45,0,.2,1);
+  will-change:opacity,transform;transform:scale(1);
+}
+.pm-slide.is-active{opacity:1;z-index:2;}
+.pm-slide:not(.is-active){z-index:1;}
+.pm-slide.kb-zoom.is-active{animation:pmKenBurns 2.6s cubic-bezier(.25,.1,.25,1) forwards;}
+@keyframes pmKenBurns{
+  0%{transform:scale(1);}
+  100%{transform:scale(1.035);}
+}
+@media (prefers-reduced-motion: reduce){
+  .pm-slide{transition:none;}
+  .pm-slide.kb-zoom.is-active{animation:none;}
+}
+
+/* ------------------------------------------------------------
+   PRODUCT IMAGE SLIDESHOW — manual navigation (arrows + swipe)
+   ------------------------------------------------------------ */
+.pm-nav{
+  position:absolute;top:50%;z-index:6;
+  width:38px;height:38px;border-radius:50%;
+  background:rgba(14,17,10,0.42);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  border:1px solid rgba(249,248,243,0.22);
+  color:#F9F8F3;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;opacity:0;transform:translateY(-50%);
+  transition:opacity .2s ease, background .2s ease, transform .2s ease, border-color .2s ease;
+}
+.pm-nav svg{width:17px;height:17px;}
+.pm-slideshow:hover .pm-nav,
+.pm-slideshow:focus-within .pm-nav{opacity:1;}
+.pm-nav:hover{background:rgba(163,115,44,0.6);border-color:var(--bronze-light);transform:translateY(-50%) scale(1.07);}
+.pm-nav:active{transform:translateY(-50%) scale(0.96);}
+.pm-nav-prev{right:10px;}
+.pm-nav-next{left:10px;}
+@media (hover:none){
+  /* touch devices: keep controls subtly visible since there's no hover to reveal them */
+  .pm-nav{opacity:1;width:34px;height:34px;background:rgba(14,17,10,0.32);}
+}
+html[data-theme="light"] .pm-nav{
+  background:rgba(33,31,21,0.35);border-color:rgba(33,31,21,0.18);
+}
+html[data-theme="light"] .pm-nav:hover{background:rgba(163,115,44,0.75);}
+@media (max-width:600px){
+  .pm-nav{width:32px;height:32px;}
+  .pm-nav svg{width:15px;height:15px;}
+}
 .engrave-canvas-wrap{width:100%;max-width:420px;aspect-ratio:1/1;margin:0 auto;border-radius:var(--radius);border:1px solid var(--line);overflow:hidden;}
 .engrave-canvas-wrap canvas{display:block;width:100%;height:100%;}
 .modal-gallery-main svg{width:50%;max-width:300px;}
@@ -5939,7 +6021,15 @@ setTimeout(function() {
 <section class="container">
   <div class="eyebrow" data-i18n="browseByCategory" data-admin-editable>تصفّح حسب التصنيف</div>
   <h2 class="section-title" style="margin-bottom:18px;" data-i18n="craftCategories" data-admin-editable>التصنيفات الحرفية</h2>
-  <div class="cat-row" id="catRow"></div>
+  <div class="cat-row-wrap" id="catRowWrap">
+    <button type="button" class="cat-nav-btn" id="catNavNext" aria-label="التالي" onclick="scrollCatRow(1)">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="cat-row" id="catRow"></div>
+    <button type="button" class="cat-nav-btn" id="catNavPrev" aria-label="السابق" onclick="scrollCatRow(-1)">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+  </div>
 </section>
 
 
@@ -10041,13 +10131,99 @@ function renderCategoryChips(){
     </button>`).join('');
   row.querySelectorAll('.cat-chip').forEach(btn=>{
     btn.addEventListener('click', ()=>{
+      if(row.dataset.dragged === '1') return; // تجاهل النقر إن كان المستخدم يسحب للتو
       state.activeCat = btn.dataset.cat || null;
       state.activePartner = null;
       renderCategoryChips();
       renderGrid();
     });
   });
+  updateCatRowNav();
 }
+
+/* ============================================================
+   تنقّل احترافي بين التصنيفات: أزرار يمين/يسار + سحب بالماوس + لمس أصلي
+   ============================================================ */
+function scrollCatRow(direction){
+  // direction: 1 = للأمام (نحو المزيد من التصنيفات), -1 = للخلف
+  const row = document.getElementById('catRow');
+  if(!row) return;
+  const amount = Math.max(160, Math.round(row.clientWidth * 0.7));
+  const isRTL = getComputedStyle(row).direction === 'rtl';
+  const delta = isRTL ? -direction * amount : direction * amount;
+  row.scrollBy({ left: delta, behavior: 'smooth' });
+}
+
+function updateCatRowNav(){
+  const wrap = document.getElementById('catRowWrap');
+  const row = document.getElementById('catRow');
+  const prevBtn = document.getElementById('catNavPrev');
+  const nextBtn = document.getElementById('catNavNext');
+  if(!wrap || !row) return;
+
+  const hasOverflow = row.scrollWidth > row.clientWidth + 2;
+  wrap.classList.toggle('has-overflow', hasOverflow);
+  if(!hasOverflow) return;
+
+  const isRTL = getComputedStyle(row).direction === 'rtl';
+  const scrollLeft = row.scrollLeft;
+  const maxAbsScroll = row.scrollWidth - row.clientWidth;
+
+  // نحدد ما إذا وصلنا لبداية أو نهاية القائمة بغض النظر عن اختلاف تمثيل scrollLeft بين المتصفحات في RTL
+  const atStart = isRTL ? scrollLeft >= -2 : scrollLeft <= 2;
+  const atEnd = isRTL ? Math.abs(scrollLeft) >= maxAbsScroll - 2 : scrollLeft >= maxAbsScroll - 2;
+
+  if(prevBtn) prevBtn.disabled = atStart;
+  if(nextBtn) nextBtn.disabled = atEnd;
+}
+
+(function initCatRowInteractions(){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const row = document.getElementById('catRow');
+    if(!row) return;
+
+    row.addEventListener('scroll', ()=>{ updateCatRowNav(); }, { passive:true });
+    window.addEventListener('resize', ()=>{ updateCatRowNav(); });
+
+    // سحب بالماوس (drag-to-scroll) لتجربة سطح مكتب احترافية
+    let isDown = false, startX = 0, startScroll = 0, moved = false;
+
+    row.addEventListener('mousedown', (e)=>{
+      isDown = true; moved = false;
+      row.classList.add('dragging');
+      row.dataset.dragged = '0';
+      startX = e.pageX;
+      startScroll = row.scrollLeft;
+    });
+
+    window.addEventListener('mousemove', (e)=>{
+      if(!isDown) return;
+      const dx = e.pageX - startX;
+      if(Math.abs(dx) > 4) moved = true;
+      if(moved){
+        row.scrollLeft = startScroll - dx;
+        row.dataset.dragged = '1';
+      }
+    });
+
+    function endDrag(){
+      if(!isDown) return;
+      isDown = false;
+      row.classList.remove('dragging');
+      setTimeout(()=>{ row.dataset.dragged = '0'; }, 0);
+    }
+    window.addEventListener('mouseup', endDrag);
+    row.addEventListener('mouseleave', ()=>{ if(isDown) endDrag(); });
+
+    // دعم عجلة الماوس الرأسية للتمرير الأفقي فوق شريط التصنيفات
+    row.addEventListener('wheel', (e)=>{
+      if(Math.abs(e.deltaY) > Math.abs(e.deltaX)){
+        row.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    }, { passive:false });
+  });
+})();
 
 /* ============================================================
    FILTER / SEARCH LOGIC
@@ -10361,7 +10537,209 @@ function openProduct(id){
 }
 function closeProduct(){
   document.getElementById('modalBackdrop').classList.remove('open');
+  pmClearResumeTimer();
+  stopModalSlideshow();
+  // نجبر إعادة بناء المعرض عند الفتح التالي حتى يبدأ العرض التلقائي من جديد بسلاسة
+  const mainArtEl = document.getElementById('modalMainArt');
+  if(mainArtEl) mainArtEl.dataset.gallerySig = '';
 }
+
+/* ============================================================
+   PRODUCT IMAGE SLIDESHOW — عرض تلقائي احترافي (Crossfade + Zoom خفيف)
+   يعمل فقط عند وجود صورتين أو أكثر لنفس المنتج. صورة واحدة = تبقى ثابتة تمامًا.
+   لا يمس أي منطق تسعير/ألوان/مقاسات — مستقل تمامًا عن باقي renderModal().
+   ============================================================ */
+const modalSlideshow = {timer:null, current:0, gallery:null};
+const MODAL_SLIDE_INTERVAL_MS = 2000;
+
+function renderModalGallery(mainArtEl, gallery, p, activeIdx){
+  if(!mainArtEl) return;
+  const sig = gallery ? (p.sku + '|' + gallery.join('|')) : '';
+
+  // لا صور مرفوعة إطلاقًا — نفس السلوك الأصلي (أيقونة الفئة)
+  if(!gallery){
+    stopModalSlideshow();
+    mainArtEl.innerHTML = categoryArt(p.category);
+    mainArtEl.dataset.gallerySig = '';
+    return;
+  }
+
+  // صورة واحدة فقط — تبقى ثابتة، بلا أي Slideshow (متطلب رقم 1)
+  if(gallery.length === 1){
+    stopModalSlideshow();
+    if(mainArtEl.dataset.gallerySig !== sig){
+      mainArtEl.innerHTML = `<img src="${gallery[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:contain">`;
+      mainArtEl.dataset.gallerySig = sig;
+    }
+    return;
+  }
+
+  // صورتان أو أكثر — تفعيل العرض التلقائي (متطلب رقم 2)
+  if(mainArtEl.dataset.gallerySig !== sig){
+    stopModalSlideshow();
+    pmClearResumeTimer();
+    mainArtEl.innerHTML = `<div class="pm-slideshow">
+      <img class="pm-slide is-active kb-zoom" src="${gallery[activeIdx]}" alt="${p.name}">
+      <img class="pm-slide" src="" alt="${p.name}">
+      <button type="button" class="pm-nav pm-nav-prev" data-pm-prev aria-label="الصورة السابقة">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+      <button type="button" class="pm-nav pm-nav-next" data-pm-next aria-label="الصورة التالية">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+    </div>`;
+    mainArtEl.dataset.gallerySig = sig;
+    modalSlideshow.current = activeIdx;
+    modalSlideshow.gallery = gallery;
+    startModalSlideshow(gallery);
+    attachPmInteractionHandlers(mainArtEl, gallery);
+  } else if(activeIdx !== modalSlideshow.current){
+    // المستخدم اختار صورة من الصور المصغّرة يدويًا — ننتقل إليها بنفس تأثير الـ Crossfade
+    jumpModalSlideshowTo(mainArtEl, gallery, activeIdx);
+  }
+}
+
+function advanceModalSlideshow(mainArtEl, gallery){
+  const nextIdx = (modalSlideshow.current + 1) % gallery.length;
+  jumpModalSlideshowTo(mainArtEl, gallery, nextIdx, true);
+}
+
+function jumpModalSlideshowTo(mainArtEl, gallery, idx, fromAutoplay){
+  const layers = mainArtEl.querySelectorAll('.pm-slide');
+  if(layers.length < 2) return;
+  const activeLayer = mainArtEl.querySelector('.pm-slide.is-active') || layers[0];
+  const inactiveLayer = layers[0] === activeLayer ? layers[1] : layers[0];
+
+  inactiveLayer.src = gallery[idx];
+  // إعادة تشغيل تأثير الزووم الخفيف من الصفر على الصورة القادمة
+  inactiveLayer.classList.remove('kb-zoom');
+  void inactiveLayer.offsetWidth; // إجبار إعادة الرسم لإعادة تشغيل الأنيميشن
+  inactiveLayer.classList.add('kb-zoom');
+
+  activeLayer.classList.remove('is-active');
+  inactiveLayer.classList.add('is-active');
+
+  modalSlideshow.current = idx;
+  state.modalImgIdx = idx;
+  syncModalActiveThumb(idx);
+
+  // عند الانتقال اليدوي من الصور المصغّرة، نعيد ضبط توقيت الدورة التلقائية حتى لا يقفز بعدها مباشرة
+  if(!fromAutoplay) startModalSlideshow(gallery);
+}
+
+function syncModalActiveThumb(idx){
+  document.querySelectorAll('#modalThumbs [data-thumb]').forEach(b=>{
+    b.classList.toggle('active-thumb', +b.dataset.thumb === idx);
+  });
+}
+
+function startModalSlideshow(gallery){
+  stopModalSlideshow();
+  if(!gallery || gallery.length < 2) return;
+  modalSlideshow.gallery = gallery;
+  modalSlideshow.timer = setInterval(()=>{
+    const mainArtEl = document.getElementById('modalMainArt');
+    if(!mainArtEl || !document.getElementById('modalBackdrop')?.classList.contains('open')){
+      stopModalSlideshow();
+      return;
+    }
+    advanceModalSlideshow(mainArtEl, gallery);
+  }, MODAL_SLIDE_INTERVAL_MS);
+}
+
+function stopModalSlideshow(){
+  if(modalSlideshow.timer){ clearInterval(modalSlideshow.timer); modalSlideshow.timer = null; }
+}
+
+/* ============================================================
+   PRODUCT IMAGE SLIDESHOW — تفاعل يدوي (أسهم + سحب باللمس)
+   يُبقي العرض التلقائي كما هو تمامًا، ويوقفه مؤقتًا فقط أثناء
+   تفاعل الزائر (تحويم/لمس)، ثم يستأنفه تلقائيًا بعد انتهاء التفاعل.
+   ============================================================ */
+let pmResumeTimer = null;
+let pmTouchStartX = 0;
+let pmTouchStartY = 0;
+let pmTouchTracking = false;
+
+function pmClearResumeTimer(){
+  if(pmResumeTimer){ clearTimeout(pmResumeTimer); pmResumeTimer = null; }
+}
+
+function pmPauseForInteraction(){
+  pmClearResumeTimer();
+  stopModalSlideshow();
+}
+
+function pmScheduleResume(gallery, delay){
+  pmClearResumeTimer();
+  pmResumeTimer = setTimeout(()=>{
+    pmResumeTimer = null;
+    if(gallery && gallery.length > 1 && document.getElementById('modalBackdrop')?.classList.contains('open')){
+      startModalSlideshow(gallery);
+    }
+  }, delay || 450);
+}
+
+// الانتقال اليدوي (سهم أو سحب) بنفس تأثير الـ Crossfade، دون إعادة تشغيل تلقائية فورية
+function pmNavigate(mainArtEl, gallery, dir){
+  if(!mainArtEl || !gallery || gallery.length < 2) return;
+  const len = gallery.length;
+  const newIdx = ((modalSlideshow.current + dir) % len + len) % len;
+  jumpModalSlideshowTo(mainArtEl, gallery, newIdx, true); // true يمنع إعادة التشغيل الفورية؛ نتحكم بالاستئناف بأنفسنا
+}
+
+function pmHandleTouchStart(e){
+  if(!e.touches || e.touches.length !== 1) return;
+  pmTouchStartX = e.touches[0].clientX;
+  pmTouchStartY = e.touches[0].clientY;
+  pmTouchTracking = true;
+  pmPauseForInteraction();
+}
+
+function pmHandleTouchEnd(e, mainArtEl, gallery){
+  if(!pmTouchTracking) return;
+  pmTouchTracking = false;
+  const touch = e.changedTouches && e.changedTouches[0];
+  if(touch){
+    const dx = touch.clientX - pmTouchStartX;
+    const dy = touch.clientY - pmTouchStartY;
+    if(Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)){
+      const dir = dx < 0 ? 1 : -1; // سحب لليسار = التالي، سحب لليمين = السابق
+      pmNavigate(mainArtEl, gallery, dir);
+    }
+  }
+  pmScheduleResume(gallery, 700);
+}
+
+function attachPmInteractionHandlers(mainArtEl, gallery){
+  const wrap = mainArtEl.querySelector('.pm-slideshow');
+  if(!wrap) return;
+
+  const prevBtn = wrap.querySelector('[data-pm-prev]');
+  const nextBtn = wrap.querySelector('[data-pm-next]');
+  if(prevBtn) prevBtn.addEventListener('click', (e)=>{ e.stopPropagation(); pmNavigate(mainArtEl, gallery, -1); });
+  if(nextBtn) nextBtn.addEventListener('click', (e)=>{ e.stopPropagation(); pmNavigate(mainArtEl, gallery, 1); });
+
+  // كمبيوتر: إيقاف مؤقت عند تحويم الفأرة، استئناف بعد مغادرتها
+  wrap.addEventListener('mouseenter', pmPauseForInteraction);
+  wrap.addEventListener('mouseleave', ()=> pmScheduleResume(gallery, 400));
+  wrap.addEventListener('focusin', pmPauseForInteraction);
+  wrap.addEventListener('focusout', ()=> pmScheduleResume(gallery, 400));
+
+  // هاتف: إيقاف عند بدء اللمس، سحب للتنقل، ثم استئناف بعد انتهاء التفاعل
+  wrap.addEventListener('touchstart', pmHandleTouchStart, {passive:true});
+  wrap.addEventListener('touchend', (e)=> pmHandleTouchEnd(e, mainArtEl, gallery), {passive:true});
+}
+
+// إيقاف العرض عند إخفاء التبويب واستئنافه عند العودة (لطف أداء بدون تغيير أي وظيفة)
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    pmClearResumeTimer();
+    stopModalSlideshow();
+  } else if(document.getElementById('modalBackdrop')?.classList.contains('open') && modalSlideshow.gallery && modalSlideshow.gallery.length > 1){
+    startModalSlideshow(modalSlideshow.gallery);
+  }
+});
 
 function computePricing(p, sel){
   const sizeObj = p.sizes[sel.size];
@@ -10389,9 +10767,8 @@ function renderModal(){
   const isAdmin = isAdminLoggedIn();
 
   const mainArtEl = document.getElementById('modalMainArt');
-  if(mainArtEl) mainArtEl.innerHTML = gallery
-    ? `<img src="${gallery[Math.min(activeIdx,gallery.length-1)]}" alt="${p.name}" style="width:100%;height:100%;object-fit:contain">`
-    : categoryArt(p.category);
+  const clampedIdx = gallery ? Math.min(activeIdx, gallery.length-1) : activeIdx;
+  renderModalGallery(mainArtEl, gallery, p, clampedIdx);
 
   const thumbsEl = document.getElementById('modalThumbs');
   if(thumbsEl) thumbsEl.innerHTML = gallery
