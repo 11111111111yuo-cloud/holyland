@@ -28,10 +28,31 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const fbStorage = firebase.storage();
 
-// اختياري: يجعل القراءة تعمل حتى مع انقطاع الاتصال مؤقتاً (تُحفظ نسخة محلية تلقائياً)
-db.enablePersistence({ synchronizeTabs: true }).catch(function (err) {
-  // فشل التفعيل غالباً بسبب فتح أكثر من تبويب أو متصفح لا يدعمه — ليس خطأ حرِج
-  console.warn("Firestore offline persistence not enabled:", err.code);
+// ملاحظة: تم تعطيل التخزين المحلي (offline persistence) عمداً.
+// كان يسبب عرض بيانات قديمة (منشورات/طلبات) على الأجهزة بعد تعليق
+// اتصال Firestore في الخلفية (خصوصاً على الموبايل/PWA)، لأن الجهاز
+// كان يعرض النسخة المخزّنة محلياً في IndexedDB قبل إعادة المزامنة
+// مع السيرفر. الموقع يعتمد بيانات حيّة دائماً، فلا حاجة له.
+//
+// إن رغبت بإعادة تفعيله لاحقاً لدعم العمل بدون إنترنت، فعّل السطر
+// التالي مع إضافة إعادة مزامنة إجبارية عند عودة التطبيق للواجهة
+// (انظر كود إعادة الاتصال أسفل الملف):
+// db.enablePersistence({ synchronizeTabs: true }).catch(function (err) {
+//   console.warn("Firestore offline persistence not enabled:", err.code);
+// });
+
+// إعادة تفعيل الاتصال بالسيرفر فوراً عند عودة التطبيق/التبويب للواجهة
+// (يمنع بقاء الجهاز على بيانات قديمة بعد تعليق الاتصال في الخلفية).
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible") {
+    db.disableNetwork()
+      .then(function () {
+        return db.enableNetwork();
+      })
+      .catch(function (err) {
+        console.warn("Firestore reconnect on visibility change failed:", err);
+      });
+  }
 });
 
 // اسم الـ collection في Firestore الذي تُخزَّن بداخله مستندات بيانات الموقع
