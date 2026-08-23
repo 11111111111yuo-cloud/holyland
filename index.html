@@ -16050,7 +16050,7 @@ function showProductEditModal(id) {
 
       <div style="display:flex;gap:10px;margin-top:14px">
         <button type="button" class="btn btn-ghost btn-block" id="prodEditCancelBtn">إلغاء</button>
-        <button type="submit" class="btn btn-primary btn-block">حفظ التعديلات</button>
+        <button type="submit" class="btn btn-primary btn-block" id="prodEditSaveBtn">حفظ التعديلات</button>
       </div>
     </form>
   `;
@@ -16298,11 +16298,23 @@ function showProductEditModal(id) {
     if(idx !== -1) PRODUCTS[idx] = p;
     else PRODUCTS.push(p);
 
-    await saveProducts();
-    await logActivity('المدير', `حفظ المنتج ${L(p.name)} (${p.sku})`);
-    backdrop.classList.remove('open');
-    renderProductsTab();
-    renderGrid();
+    // نقفل زر الحفظ ونعرض حالة "جاري الحفظ..." طول مدة انتظار await saveProducts()،
+    // حتى لا يظن المدير أن الحفظ انتهى وهو لسا ينتظر تأكيد السيرفر — لأن إعادة
+    // تحميل الصفحة أو إغلاقها في هذه اللحظة بالذات (خصوصاً مع شبكة غير مستقرة)
+    // يعرّض التعديل المعلّق للضياع.
+    const saveBtn = document.getElementById('prodEditSaveBtn');
+    const saveBtnOriginalText = saveBtn ? saveBtn.textContent : '';
+    if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'جاري الحفظ...'; }
+
+    try{
+      await saveProducts();
+      await logActivity('المدير', `حفظ المنتج ${L(p.name)} (${p.sku})`);
+      backdrop.classList.remove('open');
+      renderProductsTab();
+      renderGrid();
+    } finally {
+      if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = saveBtnOriginalText; }
+    }
   });
 }
 
