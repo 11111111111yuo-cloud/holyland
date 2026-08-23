@@ -1,0 +1,25 @@
+{
+  "name": "الأرض المقدسة للصناعات الحرفية",
+  "short_name": "الأرض المقدسة",
+  "description": "كتالوج إلكتروني لمتجر الأرض المقدسة للصناعات الحرفية — حفر بالليزر، دروع تكريم، لوحات تخرج، وهدايا مخصصة. الخليل، فلسطين.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "lang": "ar",
+  "dir": "rtl",
+  "background_color": "#0E110A",
+  "theme_color": "#0E110A",
+  "icons": [
+    {
+      "src": "https://holylandhr.firebaseapp.com/assets/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "https://holylandhr.firebaseapp.com/assets/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
