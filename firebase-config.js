@@ -26,6 +26,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 
 const db = firebase.firestore();
+
+// بعض الشبكات (خصوصاً خلف بروكسي/فايروول أو اتصال جوّال غير مستقر) تحظر أو
+// تؤخّر اتصال البث الحي (WebChannel streaming) الذي يحاوله Firestore افتراضياً
+// أولاً. عندها تضطر المكتبة تفشل عدة مرات (أخطاء "could not reach backend" /
+// "client is offline" تظهر لثوانٍ) قبل ما ترجع تلقائياً لطريقة Long Polling
+// المتوافقة أكثر. هذا الإعداد يفرض استخدام Long Polling مباشرة من أول محاولة،
+// فيتفادى الموقع ضياع تلك الثواني بالكامل ويتصل بسرعة من أول مرة.
+db.settings({
+  experimentalAutoDetectLongPolling: true,
+  merge: true
+});
 const fbStorage = firebase.storage();
 
 // ملاحظة: تم تعطيل التخزين المحلي (offline persistence) عمداً.
