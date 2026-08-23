@@ -1321,17 +1321,7 @@ footer{margin-top:80px;border-top:1px solid var(--line);background:var(--bg-soft
   pointer-events: none;
 }
 
-.product-admin-controls {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: flex;
-  gap: 8px;
-  z-index: 5;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 6px;
-  border-radius: 8px;
-}
+/* .product-admin-controls مُعرّفة أسفل بشكل صحيح مع CSS متقدم — تم حذف التعريف الأول المتضارب */
 
 .admin-control-btn {
   background: var(--bronze);
@@ -2341,19 +2331,20 @@ body.admin-mode.quick-edit-mode [data-admin-editable]:hover {
   gap: 8px;
   z-index: 100;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.2s ease;
 }
 
+/* أظهر أزرار الإدارة دائماً عند تفعيل وضع المدير (بدل الاعتماد على quick-edit-mode فقط) */
 body.admin-mode .product-admin-controls {
   opacity: 1;
+  pointer-events: auto;
 }
 
-body.admin-mode:not(.quick-edit-mode) .product-admin-controls {
+/* إيقاف الأزرار عندما يكون في وضع سريع بدون admin-mode */
+body:not(.admin-mode) .product-admin-controls {
   opacity: 0;
-}
-
-body.admin-mode.quick-edit-mode .product-admin-controls {
-  opacity: 1;
+  pointer-events: none;
 }
 
 .product-admin-btn {
@@ -10327,18 +10318,24 @@ function productCardHtml(p){
 // ربط أحداث النقر/المفضلة/الطلب لبطاقات المنتجات داخل أي حاوية (شبكة عادية أو أقسام الصفحة الرئيسية)
 function bindProductCardEvents(container){
   if(!container) return;
+  
+  // ربط أحداث النقر على البطاقات
   container.querySelectorAll('.card').forEach(card=>{
     card.addEventListener('click', (e)=>{
-      if(e.target.closest('[data-fav]') || e.target.closest('[data-order]')) return;
+      if(e.target.closest('[data-fav]') || e.target.closest('[data-order]') || e.target.closest('.product-admin-controls')) return;
       openProduct(card.dataset.id);
     });
   });
+  
+  // ربط أزرار المفضلة
   container.querySelectorAll('[data-fav]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       toggleFavorite(btn.dataset.fav);
     });
   });
+  
+  // ربط أزرار الطلب
   container.querySelectorAll('[data-order]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -10347,8 +10344,8 @@ function bindProductCardEvents(container){
   });
 
   // إعادة إرفاق أزرار إدارة المنتج (تعديل/نسخ/إخفاء/حذف) فوق البطاقات بعد كل
-  // إعادة رسم للشبكة (بحث/فلترة/تفضيل/تحديث بيانات)، لأنها كانت تُربط مرة
-  // واحدة فقط عند تسجيل الدخول وتُفقَد عند أي renderGrid/renderHomeProducts لاحق.
+  // إعادة رسم للشبكة (بحث/فلترة/تفضيل/تحديث بيانات).
+  // هذا مهم جداً لأن البطاقات تُعاد إنشاؤها بالكامل مع كل renderGrid.
   if(typeof isAdminLoggedIn === 'function' && isAdminLoggedIn()
      && typeof AdminModeModule !== 'undefined' && typeof AdminModeModule.attachProductCardControls === 'function'){
     AdminModeModule.attachProductCardControls(container);
@@ -10443,6 +10440,12 @@ function renderHomeProducts(productsList){
     productsContainer.appendChild(categorySection);
 
     bindProductCardEvents(productGrid);
+    
+    // أضف أزرار الإدارة للمدير على كل قسم
+    if(typeof isAdminLoggedIn === 'function' && isAdminLoggedIn()
+       && typeof AdminModeModule !== 'undefined' && typeof AdminModeModule.attachProductCardControls === 'function'){
+      AdminModeModule.attachProductCardControls(productGrid);
+    }
   });
 
   productsContainer.querySelectorAll('[data-view-more-cat]').forEach(btn=>{
@@ -10486,6 +10489,12 @@ function renderGrid(){
 
   grid.innerHTML = list.map(p=>productCardHtml(p)).join('');
   bindProductCardEvents(grid);
+  
+  // إعادة ربط أزرار إدارة المنتج للمدير مباشرة بعد الرسم
+  if(typeof isAdminLoggedIn === 'function' && isAdminLoggedIn()
+     && typeof AdminModeModule !== 'undefined' && typeof AdminModeModule.attachProductCardControls === 'function'){
+    AdminModeModule.attachProductCardControls(grid);
+  }
 
   // Re-apply saved view mode after rendering
   if(typeof applyProductViewMode === 'function') {
@@ -15097,6 +15106,10 @@ function renderProductsTab() {
         <button class="btn btn-ghost" id="manageOccsBtn">${t('qaNewOccasion')}</button>
       </div>
     </div>
+
+    <div class="field" style="margin:12px 0;">
+      <input type="text" class="txt-input" id="prodTableSearchInput" placeholder="🔍 بحث عن منتج بالاسم أو رمز SKU...">
+    </div>
     
     <!-- Wood Texture Customizer -->
     <div class="wood-texture-customizer" id="woodTextureCustomizer">
@@ -15146,8 +15159,24 @@ function renderProductsTab() {
             <th>${t('thActions')}</th>
           </tr>
         </thead>
-        <tbody>
-          ${PRODUCTS.map(p => `
+        <tbody id="prodTableBody"></tbody>
+      </table>
+    </div>
+  `;
+
+  // ترتيب المنتجات حسب تاريخ آخر نشر (الأحدث أولاً)
+  function lastPublishedTime(p) {
+    const d = p.updatedAt || p.createdAt;
+    const ts = d ? new Date(d).getTime() : NaN;
+    return isNaN(ts) ? 0 : ts;
+  }
+
+  function sortedProducts() {
+    return [...PRODUCTS].sort((a, b) => lastPublishedTime(b) - lastPublishedTime(a));
+  }
+
+  function productRowHtml(p) {
+    return `
             <tr>
               <td>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -15171,11 +15200,46 @@ function renderProductsTab() {
                 </div>
               </td>
             </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
+          `;
+  }
+
+  function attachRowSelectListeners() {
+    document.querySelectorAll('#tab-products tbody tr').forEach(row => {
+      row.addEventListener('click', () => {
+        const productId = row.querySelector('[data-admin-edit-product-row]')?.dataset.adminEditProductRow;
+        if(productId) {
+          loadWoodGradientForProduct(productId);
+          toast(`🎨 تم اختيار المنتج لتعديل تدرج الخشب`);
+        }
+      });
+    });
+  }
+
+  function renderProductRows(list) {
+    const tbody = document.getElementById('prodTableBody');
+    if(!tbody) return;
+    tbody.innerHTML = list.length
+      ? list.map(productRowHtml).join('')
+      : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-dim)">لا توجد منتجات مطابقة للبحث</td></tr>`;
+    attachRowSelectListeners();
+  }
+
+  const allProductsSorted = sortedProducts();
+  renderProductRows(allProductsSorted);
+
+  const searchInput = document.getElementById('prodTableSearchInput');
+  if(searchInput) {
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim().toLowerCase();
+      if(!q) { renderProductRows(allProductsSorted); return; }
+      const filtered = allProductsSorted.filter(p => {
+        const name = `${p.name?.ar||''} ${p.name?.en||''} ${p.name?.he||''}`.toLowerCase();
+        const sku = (p.sku || '').toLowerCase();
+        return name.includes(q) || sku.includes(q);
+      });
+      renderProductRows(filtered);
+    });
+  }
 
   document.getElementById('addNewProdBtn').addEventListener('click', () => showProductEditModal(null));
   document.getElementById('manageCatsBtn').addEventListener('click', () => openTaxonomyManager('categories'));
@@ -15252,46 +15316,66 @@ function renderProductsTab() {
       updateWoodPreview();
     }
   };
-  
-  // Add click handler to product rows to select for wood gradient editing
-  document.querySelectorAll('#tab-products tbody tr').forEach(row => {
-    row.addEventListener('click', () => {
-      const productId = row.querySelector('[data-admin-edit-product-row]')?.dataset.adminEditProductRow;
-      if(productId) {
-        loadWoodGradientForProduct(productId);
-        toast(`🎨 تم اختيار المنتج لتعديل تدرج الخشب`);
-      }
-    });
-  });
 }
 
 window.editProduct = function(id) { showProductEditModal(id); }
 
 window.deleteProduct = async function(id) {
-  if(!requireAdminPermission('delete_products')) return;
-
-  const product = PRODUCTS.find(p => idsEqual(p.id, id));
-  if(!product){ toast('⚠️ تعذّر إيجاد المنتج المطلوب'); return; }
-
-  if(!confirm('هل أنت متأكد أنك تريد حذف هذا المنتج؟ لا يمكن التراجع عن هذه العملية.')) return;
-
-  // نحتفظ بنسخة من القائمة الحالية للتراجع محلياً إن فشل الحفظ الفعلي في قاعدة البيانات
-  const previousProducts = PRODUCTS;
-  PRODUCTS = PRODUCTS.filter(p => !idsEqual(p.id, id));
-
-  const ok = await saveProducts();
-  if(!ok){
-    PRODUCTS = previousProducts;
-    renderProductsTab();
-    renderGrid();
-    toast('❌ فشل حذف المنتج — تعذّر الاتصال بقاعدة البيانات. حاول مرة أخرى.');
+  // تحقق من الصلاحيات أولاً
+  if(!requireAdminPermission('delete_products')) {
+    toast('❌ ليس لديك صلاحية حذف المنتجات');
     return;
   }
 
-  await logActivity('المدير', `حذف منتج: ${L(product.name)} (${product.sku || id})`);
+  // ابحث عن المنتج في القائمة الحالية
+  const product = PRODUCTS.find(p => idsEqual(p.id, id));
+  if(!product){ 
+    toast('⚠️ تعذّر إيجاد المنتج المطلوب'); 
+    return; 
+  }
+
+  // اطلب تأكيداً من المستخدم
+  const productName = L(product.name) || `المنتج (${product.sku || id})`;
+  const confirmed = confirm(`⚠️ هل أنت متأكد من حذف: "${productName}"?\n\nهذه العملية نهائية ولا يمكن التراجع عنها!`);
+  
+  if(!confirmed) {
+    toast('تم الإلغاء');
+    return;
+  }
+
+  // احفظ نسخة من البيانات الحالية للتراجع في حالة الفشل
+  const previousProducts = [...PRODUCTS];
+  const previousKnownIds = new Set(PRODUCTS_KNOWN_IDS);
+
+  // احذف المنتج محلياً أولاً
+  PRODUCTS = PRODUCTS.filter(p => !idsEqual(p.id, id));
+  PRODUCTS_KNOWN_IDS.delete(id);
+
+  // عرّف رسالة تحميل
+  toast('⏳ جاري حذف المنتج...');
+
+  // احفظ في Firebase
+  const ok = await saveProducts();
+  
+  if(!ok){
+    // استعد إذا فشل الحفظ
+    PRODUCTS = previousProducts;
+    PRODUCTS_KNOWN_IDS = previousKnownIds;
+    renderProductsTab();
+    renderGrid();
+    toast('❌ فشل حذف المنتج — تعذّر الاتصال بقاعدة البيانات.\n\nتأكد من اتصالك بالإنترنت وحاول مرة أخرى.');
+    return;
+  }
+
+  // سجّل العملية
+  await logActivity('المدير', `🗑️ حذف منتج: "${productName}" (SKU: ${product.sku || id})`);
+  
+  // أعد رسم الواجهات
   renderProductsTab();
   renderGrid();
-  toast('✅ تم حذف المنتج بنجاح');
+  
+  // أرسل رسالة نجاح
+  toast(`✅ تم حذف المنتج بنجاح: "${productName}"`);
 }
 
 window.toggleProductVisibility = async function(id) {
@@ -15884,7 +15968,8 @@ function showProductEditModal(id) {
     video: '',
     minOrderQty: null,
     companyId: '',
-    visible: true
+    visible: true,
+    createdAt: new Date().toISOString()
   };
 
   if(!p.sku) p.sku = nextSku(p.category);
@@ -16050,7 +16135,7 @@ function showProductEditModal(id) {
 
       <div style="display:flex;gap:10px;margin-top:14px">
         <button type="button" class="btn btn-ghost btn-block" id="prodEditCancelBtn">إلغاء</button>
-        <button type="submit" class="btn btn-primary btn-block" id="prodEditSaveBtn">حفظ التعديلات</button>
+        <button type="submit" class="btn btn-primary btn-block">حفظ التعديلات</button>
       </div>
     </form>
   `;
@@ -16294,27 +16379,18 @@ function showProductEditModal(id) {
       return;
     }
 
+    p.updatedAt = new Date().toISOString();
+    if(!p.createdAt) p.createdAt = p.updatedAt;
+
     const idx = PRODUCTS.findIndex(x => x.id === p.id);
     if(idx !== -1) PRODUCTS[idx] = p;
     else PRODUCTS.push(p);
 
-    // نقفل زر الحفظ ونعرض حالة "جاري الحفظ..." طول مدة انتظار await saveProducts()،
-    // حتى لا يظن المدير أن الحفظ انتهى وهو لسا ينتظر تأكيد السيرفر — لأن إعادة
-    // تحميل الصفحة أو إغلاقها في هذه اللحظة بالذات (خصوصاً مع شبكة غير مستقرة)
-    // يعرّض التعديل المعلّق للضياع.
-    const saveBtn = document.getElementById('prodEditSaveBtn');
-    const saveBtnOriginalText = saveBtn ? saveBtn.textContent : '';
-    if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'جاري الحفظ...'; }
-
-    try{
-      await saveProducts();
-      await logActivity('المدير', `حفظ المنتج ${L(p.name)} (${p.sku})`);
-      backdrop.classList.remove('open');
-      renderProductsTab();
-      renderGrid();
-    } finally {
-      if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = saveBtnOriginalText; }
-    }
+    await saveProducts();
+    await logActivity('المدير', `حفظ المنتج ${L(p.name)} (${p.sku})`);
+    backdrop.classList.remove('open');
+    renderProductsTab();
+    renderGrid();
   });
 }
 
