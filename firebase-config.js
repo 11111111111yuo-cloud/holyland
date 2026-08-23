@@ -34,11 +34,7 @@ const db = firebase.firestore();
 // المتوافقة أكثر. هذا الإعداد يفرض استخدام Long Polling مباشرة من أول محاولة،
 // فيتفادى الموقع ضياع تلك الثواني بالكامل ويتصل بسرعة من أول مرة.
 db.settings({
-  // إجبار Long Polling من أول لحظة بدل تجربة WebChannel streaming أولاً ثم
-  // الرجوع له بعد الفشل. auto-detect كان يضيّع أول محاولة كاملة (المهلة اللي
-  // كانت تظهر أول 20 ثانية عند فتح الموقع)، بينما experimentalForceLongPolling
-  // يتصل مباشرة بالطريقة المتوافقة مع الشبكات المقيّدة/البروكسي.
-  experimentalForceLongPolling: true,
+  experimentalAutoDetectLongPolling: true,
   merge: true
 });
 const fbStorage = firebase.storage();
