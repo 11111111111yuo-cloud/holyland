@@ -18334,17 +18334,27 @@ window.addEventListener('load', async () => {
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateThemeButtons();
 
-    await loadLang();
-    await loadPersisted();
-    await initTaxonomy();
-    await initProducts();
-    await initSettings();
-    await initExhibitions();
-    await initSections();
-    await initUsers();
-    await initCompanies();
-    await initReviews();
-    await loadPromotions();
+    // كانت هذه الاستدعاءات تُنفَّذ الواحد تلو الآخر (await متتالٍ)، وكل واحد منها
+    // يمثّل رحلة اتصال مستقلة بقاعدة بيانات Firestore. على اتصال إنترنت عادي/بطيء
+    // هذا يعني جمع زمن كل الرحلات فوق بعضها (قد يصل إلى 15 ثانية وأكثر) قبل ظهور
+    // البيانات المحدَّثة للزائر. بما أن كل دالة منها تحمّل مجموعة بيانات مختلفة
+    // ومستقلة عن البقية (تصنيفات، منتجات، إعدادات، معارض...)، لا داعي أبداً لانتظار
+    // كل واحدة قبل بدء التي تليها — ننفّذها كلها بالتوازي دفعة واحدة، فيصبح زمن
+    // الانتظار الكلي مساوياً لأبطأ رحلة اتصال منفردة فقط، بدل مجموعها كلها.
+    await Promise.allSettled([
+      loadLang(),
+      loadPersisted(),
+      initTaxonomy(),
+      initProducts(),
+      initSettings(),
+      initExhibitions(),
+      initSections(),
+      initUsers(),
+      initCompanies(),
+      initReviews(),
+      loadPromotions()
+    ]);
+    // هذه تعتمد على أن تكون بيانات المنتجات/العروض قد وصلت فعلاً، لذا تبقى بعد الدفعة أعلاه
     await expireOldOffers();
 
     applyLanguage();
@@ -20645,27 +20655,22 @@ setTimeout(() => {
     });
   }
 
-  // 1) مزامنة المنتجات: تحميل أولي + استماع لحظي (onSnapshot) لأي منتج جديد
+  // 1) مزامنة المنتجات: استماع لحظي واحد (onSnapshot) يغنينا عن تحميل أولي منفصل
   // كل منتج مخزَّن في مستند مستقل بمجموعة (products) — لا يوجد حد أقصى لعدد المنتجات
-  FirebaseCloudStorage.db.collection('products').get().then(snap => {
-    if(!snap.empty){
-      PRODUCTS = snap.docs.map(d => d.data());
-      if(typeof renderGrid === 'function') renderGrid();
-    }
+  // (سابقاً: كان هناك get() منفصل هنا قبل onSnapshot، أي تحميل كل المنتجات مرتين
+  // في كل فتح للصفحة، بالإضافة لتكرار renderGrid() مرتين بلا داعٍ في كل تحديث)
+  let productsFirstSnapshot = true;
+  FirebaseCloudStorage.db.collection('products').onSnapshot(liveSnap => {
+    const liveProducts = liveSnap.docs.map(d => d.data());
+    const newOnes = productsFirstSnapshot ? [] : liveProducts.filter(p => !knownProductIds.has(p.id));
+    PRODUCTS = liveProducts;
     markKnownProducts(PRODUCTS);
-
-    FirebaseCloudStorage.db.collection('products').onSnapshot(liveSnap => {
-      const liveProducts = liveSnap.docs.map(d => d.data());
-      const newOnes = liveProducts.filter(p => !knownProductIds.has(p.id));
-      PRODUCTS = liveProducts;
-      markKnownProducts(PRODUCTS);
-      if(typeof renderGrid === 'function') renderGrid();
-      if(typeof renderGrid === 'function') renderGrid();
-      if(newOnes.length){
-        showNewProductBanner(newOnes[newOnes.length - 1]);
-      }
-    });
-  }).catch(err => console.error('تعذّر تحميل المنتجات من Firestore:', err));
+    productsFirstSnapshot = false;
+    if(typeof renderGrid === 'function') renderGrid();
+    if(newOnes.length){
+      showNewProductBanner(newOnes[newOnes.length - 1]);
+    }
+  }, err => console.error('تعذّر تحميل المنتجات من Firestore:', err));
 
   // 2) مزامنة إعدادات الموقع (الشعار، الفافيكون، الصور، بيانات التواصل...) — استماع لحظي
   FirebaseCloudStorage.listenSiteData('app_data_settings', (liveSettings) => {
