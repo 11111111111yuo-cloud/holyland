@@ -36,7 +36,11 @@ self.addEventListener('activate', function (event) {
         return self.registration.unregister();
       })
       .then(function () {
-        return self.clients.matchAll({ type: 'window' });
+        // includeUncontrolled: true ضروري هنا — بدونه القائمة ترجع فاضية لأي
+        // تبويب كان مفتوح قبل تفعيل هذا الـ Worker الجديد (لأنه لسا مو تحت
+        // سيطرته)، فما كان يصير له reload تلقائي، وكان لازم المستخدم يسكّر
+        // التبويب ويفتحه يدوياً حتى يتحدّث.
+        return self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       })
       .then(function (clients) {
         clients.forEach(function (client) {
